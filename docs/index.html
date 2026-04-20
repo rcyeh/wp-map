@@ -1,7 +1,74 @@
-<HTML>
-	<HEAD>
-		<TITLE>Popular Wikipedia Articles Near Me</TITLE>
-	</HEAD><BODY>
-<H1>Popular Wikipedia Articles Near Me</H1>
-	</BODY>
-</HTML>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Popular Wikipedia Articles Near Me</title>
+    <meta charset="utf-8" />
+    <meta name="referrer" content="no-referrer-when-downgrade">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link 
+        rel="stylesheet" 
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+        crossorigin=""
+    />
+
+    <script 
+        src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""
+    ></script>
+
+    <style>
+        /* CRUCIAL: The map container MUST have a defined height */
+        #map { 
+            height: 500px; 
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <h2>Popular Wikipedia Articles Near Me</h2>
+
+    <div id="map"></div>
+
+    <script>
+        // 1. Initialize the map and set its center and zoom level
+        var map = L.map('map').setView([51.505, -0.09], 13); 
+
+        // 2. Add the OpenStreetMap tiles
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
+
+        // 3. Add your marker with a permanent label (as discussed before)
+	// Your data points
+	const locations = [
+	    { name: "London", lat: 51.505, lon: -0.09, url: "https://en.wikipedia.org/wiki/London" },
+	    { name: "Paris", lat: 48.856, lon: 2.352, url: "https://en.wikipedia.org/wiki/Paris" },
+	    { name: "Berlin", lat: 52.520, lon: 13.404, url: "https://en.wikipedia.org/wiki/Berlin" }
+	];
+
+	// Loop through the data to create markers
+	locations.forEach(loc => {
+	    const marker = L.marker([loc.lat, loc.lon]).addTo(map);
+
+	    // Bind a popup with an HTML hyperlink
+	    marker.bindPopup(`
+		<a href="${loc.url}" target="_blank" rel="noopener noreferrer">
+		    ${loc.name}
+		</a>
+	    `, {
+		    autoClose: false,
+		    closeButton: false,
+		    closeOnClick: false,
+		    closeOnEscapeKey: false,
+		    closePopupOnClick: false,
+		    //closeOnMouseout: false
+	    }).openPopup();
+	});
+
+    </script>
+</body>
+</html>
