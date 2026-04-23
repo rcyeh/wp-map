@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
   <head>
-    <title>Popular Wikipedia Articles Near Me</title>
+    <title>Popular Wikipedia Articles on a Map</title>
     <meta charset="utf-8" />
     <meta name="referrer" content="no-referrer-when-downgrade" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -18,6 +18,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
+    <script type="module" src="wp-map.js"></script>
 
     <style>
       /* CRUCIAL: The map container MUST have a defined height */
@@ -36,6 +37,16 @@
         transform: translateX(-50%);
         text-decoration: none;
         pointer-events: none;
+        animation: fadeIn 0.3s;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
       }
       .marker-img {
         width: 25px;
@@ -65,10 +76,13 @@
     </style>
   </head>
   <body>
-    <h2>Popular Wikipedia Articles Near Me</h2>
+    <h2>Popular Wikipedia Articles on a Map</h2>
 
     <div id="map"></div>
 
-    <script src="wp-map.js"></script>
+    <div>
+      <label for="marker-limit">Number of markers to show:</label>
+      <input type="number" id="marker-limit" min="5" max="100" value="5" />
+    </div>
   </body>
 </html>
