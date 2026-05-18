@@ -12,6 +12,17 @@ Decisions:
 
 - Bypass the database. Instead:
 
+1. Download the wikidata archive (100 GB) as a compressed stream.
+   To save disk space, decompress stream and extract essential data in flight.
+
+   * wikibase_item_id
+   * page title
+   * latitude/longitude
+
+   In the May 2026 file, there are: 1,417,268 records with the P625
+   geographical information tag.  Of those, 1,412,537 (99.7%) are on Earth.
+
+
 1. Slurp the `geo_tags` dump records into memory.
    Keep `gt_page_id`, `gt_lat`, `gt_lon`, `gt_type`
    Filter to keep only `gt_globe = 'earth'`
@@ -92,8 +103,16 @@ https://qrank.toolforge.org/download/qrank.csv.gz (101 MB)
 
 Lines: `Q####,rank`
 
-## Loading to database
+## Things that I could not get to work
+
+### `geo_tags`
+
+Do not know how to join this.
+
+
+### mariadb
+
+Too slow
 
 `sudo mariadb -D wp < dump.sql`
 
-## Generating extracts

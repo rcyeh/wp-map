@@ -1,10 +1,8 @@
 # python3 download.py
-
 import os
 import requests
 
 import constants
-
 
 
 def download(url: str, filename: str):
@@ -16,10 +14,7 @@ def download(url: str, filename: str):
 
 if __name__ == "__main__":
   for url in [
-      constants.PAGE_DUMP_URL, 
-      constants.PAGE_PROPS_DUMP_URL, 
       constants.QRANK_CSV_URL, 
-      constants.GEO_TAGS_DUMP_URL
     ]:
     filename = url.split('/')[-1]
     if not os.path.exists(filename):
