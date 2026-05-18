@@ -142,16 +142,39 @@ def read_redirect():
   read_gzip_mysqldump(constants.REDIRECT_DUMP_FILE, process_redirect)
   print(f'Saved {records_matched} redirect data out of {records_seen} seen')
 
+def read_wikidata():
+  records_added = 0
+  def process_geo_tags(csv_records: list[str]):
+    nonlocal records_added
+    for entry in csv_records:
+      record = entry.split(',')
+      if len(record) < 3:
+        print(f'Failed to extract from {record}')
+        continue
+      wikibase_item_id, page_title, p625 = record[0:3]
+      if wikibase_item_id not in page_wpr_map:
+        wpr = WPRecord()
+        wpr.q = wikibase_item_id
+        wpr.y = float(gt_lat)
+        wpr.x = float(gt_lon)
+        wpr.t = page_title
+        page_wpr_map[wikibase_item_id] = wpr
+        records_added += 1
+  with gzip.open(constants.WIKIDATA_EXTRACT_CSV_FILE, 'rt', encoding='utf-8') as f:
+    for line in f:
+      process_wikidata_extract(line)
+  print(f'Saved {records_added} wikidata records')
+
 
 if __name__ == "__main__":
-  print(f'{datetime.datetime.now().isoformat()} - read_geo_tags')
-  read_geo_tags()
-  print(f'{datetime.datetime.now().isoformat()} - read_redirect')
-  read_redirect()
-  print(f'{datetime.datetime.now().isoformat()} - read_page')
-  read_page()
-  print(f'{datetime.datetime.now().isoformat()} - read_page_props')
-  read_page_props()
+  # print(f'{datetime.datetime.now().isoformat()} - read_geo_tags')
+  # read_geo_tags()
+  # print(f'{datetime.datetime.now().isoformat()} - read_redirect')
+  # read_redirect()
+  # print(f'{datetime.datetime.now().isoformat()} - read_page')
+  # read_page()
+  # print(f'{datetime.datetime.now().isoformat()} - read_page_props')
+  # read_page_props()
   print(f'{datetime.datetime.now().isoformat()} - read_qrank')
   read_qrank()
   print(f'{datetime.datetime.now().isoformat()} - sort')
