@@ -11,3 +11,6 @@ WIKIDATA_ENTITIES_URL = "https://dumps.wikimedia.org/wikidatawiki/entities/lates
 QRANK_CSV_FILE = QRANK_CSV_URL.split('/')[-1]
 # REDIRECT_DUMP_FILE = REDIRECT_DUMP_URL.split('/')[-1]
 WIKIDATA_EXTRACT_FILE = "q_title_latlon.jsonl.gz"
+JOINED_FILE = "joined.jsonl.gz"
+
+PATH_TO_TILE_DIR = "../docs/t"

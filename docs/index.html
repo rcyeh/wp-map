@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
   <head>
-    <title>Popular Wikipedia Articles on a Map</title>
+    <title>Wikipedia Articles, Mapped</title>
     <meta charset="utf-8" />
     <meta name="referrer" content="no-referrer-when-downgrade" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -23,8 +23,8 @@
     <style>
       /* CRUCIAL: The map container MUST have a defined height */
       #map {
-        height: 500px;
-        width: 100%;
+        height: 90vh;
+        width: 100vw;
       }
       .custom-div-icon {
         pointer-events: none !important;
@@ -76,13 +76,12 @@
     </style>
   </head>
   <body>
-    <h2>Popular Wikipedia Articles on a Map</h2>
-
-    <div id="map"></div>
+    <h2>Wikipedia Articles on a Map</h2>
 
     <div>
       <label for="marker-limit">Number of markers to show:</label>
       <input type="number" id="marker-limit" min="5" max="100" value="5" />
     </div>
+    <div id="map"></div>
   </body>
 </html>

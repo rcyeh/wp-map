@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package wpmaps;
+
+message WikiGeoData {
+  // The number following the Q in the Wikidata ID.
+  // Current max around 5e8. So we'll use all four bytes on average, saving
+  // four bytes (50%) compared to a string representation.
+  // Actually, do I need this?
+  uint32 q_id = 1;
+  // Title of page, suitable for appending to https://en.wikipedia.org/wiki/
+  string name = 2;
+
+  // At the equator, a microdegree is about 4 inches; 10^-5 degrees ~ 1 m.
+  // Protobuf encodes values with 7 bits per byte, so to stay within 4 bytes,
+  // +/- 2^27 = 1.3e8. So representing +/- 180 * 1e5 stays within that range.
+  // Degrading the resolution to 10 m for an extra byte - not worth it.
+
+  // Longitude coordinate in 10^-5. East is positive, West is negative.
+  sint32 longitude = 3;  // East is positive, West is negative 10^-5 degrees.
+  // Latitude coordinate in 10^-5 degrees.  North is positive, South is negative.
+  sint32 latitude = 4;  // North is positive, South is negative 10^-5 degrees.
+
+  uint32 logrank = 5;  // Ranks span 1-0.5E9, or 0-20 in log space.
+                       // Multiply by 750 for resolution before rounding.
+}
+
+message WikiGeoDataList {
+  repeated WikiGeoData items = 1;
+}
