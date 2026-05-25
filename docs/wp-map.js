@@ -12,8 +12,11 @@ let tileSetCache = null; // zoom-level-indexed list of sorted tile indices
 const pointRegistry = new Map();
 const markersOnMap = new Map(); // Key: point.id, Value: Leaflet Marker instance
 const downloadedTiles = new Set(); // Tracks fileKeys already fetched
+const MAX_JITTER_DEGREES = 0.00015;
+const markerLimit = document.getElementById("marker-limit");
 
 async function initTileRegistry(url = "t/tile_set_list.pbf") {
+  // 80 kB delta-encoded integer arrays enumerating available tiles
   try {
     const response = await fetch(url);
     if (!response.ok) throw new Error("Failed to get tile set list");
@@ -52,10 +55,6 @@ async function waitForGlobal(variableName, callback, nextCheckMs = 100) {
 //  ></script>
 await waitForGlobal("L", initMap);
 
-async function getInitialLatLon() {
-  return { lat: 40, lon: -100, zoom: 5 };
-}
-
 async function initMap() {
   const startLL = await getInitialLatLon();
   // 1. Initialize the map and set its center and zoom level
@@ -69,6 +68,10 @@ async function initMap() {
     moveTimeout = setTimeout(updateMapDisplay, 500);
   });
 
+  markerLimit.addEventListener("change", (event) => {
+    updateMapDisplay();
+  });
+
   // 2. Add the OpenStreetMap tiles
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
@@ -78,9 +81,9 @@ async function initMap() {
 
   // Example: Loading and filtering Wikipedia POIs from your custom tile server
   const poiLayer = L.GridLayer.extend({
-    createTile: function (coords) {
+    createTile: function (tile_idx) {
       const tile = document.createElement("div");
-      fetchDataFor(coords);
+      fetchDataFor(tile_idx);
       return tile;
     },
   });
@@ -88,50 +91,9 @@ async function initMap() {
   new poiLayer().addTo(map);
 }
 
-function getDeterministicHash(str) {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 33) ^ str.charCodeAt(i);
-  }
-  // Convert to a floating point number between -1.0 and 1.0
-  return ((hash >>> 0) / 4294967295) * 2 - 1;
-}
-
-const MAX_JITTER_DEGREES = 0.00015;
-
-function createCustomMarker(loc) {
-  const customIcon = L.divIcon({
-    html: `
-    <a href="${loc.url}" target="_blank" class="marker-link-container" aria-label="Wikipedia: ${loc.name}">
-    <img src="https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png" class="marker-img">
-    <span class="marker-label">${loc.name}</span>
-    </a>`,
-    className: "custom-div-icon", // Use this to remove default Leaflet styles
-    iconSize: null,
-    iconAnchor: [0, 41],
-  });
-  const hashX = getDeterministicHash("x_" + loc.name) * MAX_JITTER_DEGREES;
-  const hashY = getDeterministicHash("y_" + loc.name) * MAX_JITTER_DEGREES;
-  const marker = L.marker([loc.lat + hashY, loc.lon + hashX], {
-    icon: customIcon,
-  });
-  return marker;
-}
-
-function createCustomDot(loc) {
-  const hashX = getDeterministicHash("x_" + loc.name) * MAX_JITTER_DEGREES;
-  const hashY = getDeterministicHash("y_" + loc.name) * MAX_JITTER_DEGREES;
-  const minorPoi = L.circleMarker([loc.lat + hashY, loc.lon + hashX], {
-    radius: 4,
-    fillColor: "#0078ff",
-    color: "#fff",
-    weight: 1,
-    fillOpacity: 0.3,
-  });
-  minorPoi.on("click", () => {
-    window.open(loc.url, "_blank", "nooopener,noreferrer");
-  });
-  return minorPoi;
+async function getInitialLatLon() {
+  // TODO - use an IP geolocation database for an initial guess.
+  return { lat: 40, lon: -100, zoom: 5 };
 }
 
 function updateMapDisplay() {
@@ -173,10 +135,91 @@ function updateMapDisplay() {
   });
 }
 
-const markerLimit = document.getElementById("marker-limit");
-markerLimit.addEventListener("change", (event) => {
-  updateMapDisplay();
-});
+function createCustomMarker(loc) {
+  const customIcon = L.divIcon({
+    html: `
+    <a href="${loc.url}" target="_blank" class="marker-link-container" aria-label="Wikipedia: ${loc.name}">
+    <img src="https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png" class="marker-img">
+    <span class="marker-label">${loc.name}</span>
+    </a>`,
+    className: "custom-div-icon", // Use this to remove default Leaflet styles
+    iconSize: null,
+    iconAnchor: [0, 41],
+  });
+  const hashX = getDeterministicHash("x_" + loc.name) * MAX_JITTER_DEGREES;
+  const hashY = getDeterministicHash("y_" + loc.name) * MAX_JITTER_DEGREES;
+  const marker = L.marker([loc.lat + hashY, loc.lon + hashX], {
+    icon: customIcon,
+  });
+  return marker;
+}
+
+function createCustomDot(loc) {
+  const hashX = getDeterministicHash("x_" + loc.name) * MAX_JITTER_DEGREES;
+  const hashY = getDeterministicHash("y_" + loc.name) * MAX_JITTER_DEGREES;
+  const minorPoi = L.circleMarker([loc.lat + hashY, loc.lon + hashX], {
+    radius: 4,
+    fillColor: "#0078ff",
+    color: "#fff",
+    weight: 1,
+    fillOpacity: 0.3,
+  });
+  minorPoi.on("click", () => {
+    window.open(loc.url, "_blank", "nooopener,noreferrer");
+  });
+  return minorPoi;
+}
+
+function getDeterministicHash(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 33) ^ str.charCodeAt(i);
+  }
+  // Convert to a floating point number between -1.0 and 1.0
+  return ((hash >>> 0) / 4294967295) * 2 - 1;
+}
+
+/**
+ * Obtain point-of-interest data for the specified tile.
+ * @param {*} tile_idx
+ */
+async function fetchDataFor(tile_idx) {
+  // Map (tile_idx.z, tile_idx.x, tile_idx.y) -> fetchKey
+  const fetchAtLowerZoom = 0; // Set to positive values to force fewer network requests
+  const availableZ = Math.max(0, Math.min(15, tile_idx.z - fetchAtLowerZoom));
+  const zoomFactor = Math.pow(2, availableZ - tile_idx.z);
+  const currentX = Math.floor(tile_idx.x * zoomFactor);
+  const currentY = Math.floor(tile_idx.y * zoomFactor);
+  const tile = lookupBestAvailableTile(availableZ, currentX, currentY);
+  if (!tile) {
+    return;
+  }
+  const fetchKey = `${tile.z}/${tile.x}/${tile.y}`;
+  await fetchDataFile(fetchKey);
+}
+
+/**
+ * Transform the requested (z, x, y) tile reference to the nearest available
+ * enclosing tile (z, x, y), by looking up the value in the tileSetCache,
+ * downloaded earlier.
+ *
+ * @param {*} z zoom level
+ * @param {*} x tile index
+ * @param {*} y tile index
+ * @returns {z: int, x: int, y: int}
+ */
+function lookupBestAvailableTile(z, x, y) {
+  // Walk up the tree until we find a tile that actually exists in our index
+  while (z >= 0) {
+    if (binarySearch(tileSetCache[z], ((x << 15) | y) >>> 0)) {
+      return { z: z, x: x, y: y };
+    }
+    z -= 1;
+    x >>= 1;
+    y >>= 1;
+  }
+  return null; // Truly empty part of the world (e.g., mid-ocean)
+}
 
 function binarySearch(array, element) {
   let left = 0;
@@ -195,26 +238,13 @@ function binarySearch(array, element) {
   return element === array[left];
 }
 
-function getBestAvailableTile(z, x, y) {
-  let currentZ = z;
-  let currentX = x;
-  let currentY = y;
-  // Walk up the tree until we find a tile that actually exists in our index
-  while (currentZ >= 0) {
-    if (
-      binarySearch(tileSetCache[currentZ], ((currentX << 15) | currentY) >>> 0)
-    ) {
-      // Found it! Return the coordinates of the file we need to fetch
-      return { z: currentZ, x: currentX, y: currentY };
-    }
-    // Target next lower zoom level using floor division math
-    currentZ = currentZ - 1;
-    currentX = currentX >> 1; // Bitwise equivalent of Math.floor(x / 2)
-    currentY = currentY >> 1; // Bitwise equivalent of Math.floor(y / 2)
-  }
-  return null; // Truly empty part of the world (e.g., mid-ocean)
-}
-
+/**
+ * Download the protobuf file for the requested tile.
+ * Upon receipt, save each point-of-interest to the
+ * pointRegistry, with necessary transformations.
+ * Memoize optimistically, to avoid sending multiple requestss for the same
+ * tile.
+ */
 async function fetchDataFile(fileKey) {
   if (downloadedTiles.has(fileKey)) return;
   downloadedTiles.add(fileKey);
@@ -224,7 +254,6 @@ async function fetchDataFile(fileKey) {
     const buffer = await response.arrayBuffer();
     const wikiGeoDataList = WikiGeoDataList.fromBinary(new Uint8Array(buffer));
     wikiGeoDataList.items.forEach((wgd) => {
-      // Use point ID to ensure unique entry in global registry
       if (!pointRegistry.has(wgd.name)) {
         const p = {
           name: wgd.name,
@@ -235,32 +264,13 @@ async function fetchDataFile(fileKey) {
             wgd.name.replaceAll(" ", "_"),
           )}`,
         };
-
-        // console.log(`Saving ${JSON.stringify(p)}`);
         pointRegistry.set(p.name, p);
       }
     });
-    updateMapDisplay(); // Trigger your 5-100 point filter
+    updateMapDisplay();
   } catch (error) {
-    // Handle missing tiles (e.g., ocean or empty areas)
     console.error(error);
     console.log(`No data for ${fileKey}`);
     downloadedTiles.delete(fileKey);
   }
-}
-
-function fetchDataFor(coords) {
-  // Map (coords.z, coords.x, coords.y) -> fetchKey
-  const fetchAtLowerZoom = 0; // Set to positive values to force fewer network requests
-  const availableZ = Math.max(0, Math.min(15, coords.z - fetchAtLowerZoom));
-  const zoomFactor = Math.pow(2, availableZ - coords.z);
-  const currentX = Math.floor(coords.x * zoomFactor);
-  const currentY = Math.floor(coords.y * zoomFactor);
-
-  const tile = getBestAvailableTile(availableZ, currentX, currentY);
-  if (!tile) {
-    return;
-  }
-  const fetchKey = `${tile.z}/${tile.x}/${tile.y}`;
-  fetchDataFile(fetchKey);
 }

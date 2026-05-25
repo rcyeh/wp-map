@@ -15,24 +15,79 @@ CHUNK_SIZE = 1024 * 1024  # 1 MB
 current_bytes = 0
 
 
-def get_resume_byte():
-  """Reads the last successfully saved byte offset from the progress file."""
-  if os.path.exists(PROGRESS_FILE):
+def process_file(input_filename: str = INPUT_FILE):
+  with open(input_filename, "rb") as bz:
+    def file_chunk_generator():
+      while True:
+        chunk = bz.read(CHUNK_SIZE)
+        if not chunk:
+          break
+        yield chunk
+
+    print("Decompressing stream:")
+    buffer = ''
     try:
-      with open(PROGRESS_FILE, "r") as f:
-        return int(f.read().strip())
-    except ValueError:
-      return 0
-  return 0
+      for text_chunk in stream_to_pbzip2(file_chunk_generator()):
+        buffer += text_chunk
+        extract_wikidata(buffer)
+        global current_bytes
+        save_progress(current_bytes)
+        print(f"\rProcessed {current_bytes / (1024**3):.2f} GB of stream...", end="", flush=True)
+    except subprocess.CalledProcessError as e:
+      print(f"\nError running pbzip2: {e.stderr}")
 
 
-def save_progress(byte_offset):
-  """Saves the current byte offset to disk safely."""
-  # Write to a temporary file first, then replace to prevent corruption
-  temp_file = PROGRESS_FILE + ".tmp"
-  with open(temp_file, "w") as f:
-    f.write(str(byte_offset))
-  os.replace(temp_file, PROGRESS_FILE)
+def download_stream():
+  start_byte = get_resume_byte()
+  headers = {}
+  if start_byte > 0:
+    print(f"Resuming download from byte offset: {start_byte}...")
+    headers["Range"] = f"bytes={start_byte}-"
+  else:
+    print("Starting download from the beginning...")
+
+  try:
+    response = requests.get(constants.WIKIDATA_ENTITIES_URL, headers=headers, stream=True, timeout=30)
+    if response.status_code == 416:
+      print("Finished or range invalid.")
+      return
+    response.raise_for_status()
+  except requests.exceptions.RequestException as e:
+    print(f"Connection failed: {e}")
+    sys.exit(1)
+  # 1. current_bytes: where we are currently reading
+  # 2. last_good_byte: the safe checkpoint before the current compression block
+  current_bytes = start_byte
+  last_good_byte = start_byte
+  buffer = ""
+  try:
+    for text_chunk in stream_to_pbzip2(response.iter_content(
+        chunk_size=CHUNK_SIZE
+      )):
+      current_bytes += len(CHUNK_SIZE)
+      if not text_chunk:
+        continue
+      try:
+        buffer += text_chunk
+        extract_wikidata(buffer)
+        save_progress(current_bytes)
+        last_good_byte = current_bytes
+      except (ValueError, OSError) as e:
+        print(f"\n[!] Decompression error encountered: {e}")
+        print(f"Rolling back network stream to last known good checkpoint: {last_good_byte}")
+        response.close()
+        print("Waiting 10 seconds before automated retry...")
+        time.sleep(10)
+        return download_stream()
+      print(f"\rProcessed {current_bytes / (1024**3):.2f} GB of stream...",
+            end="",
+            flush=True
+        )
+  except (requests.exceptions.RequestException, ConnectionResetError) as e:
+    print(f"\n[!] Network dropped: {e}")
+    print("Progress safely saved. Run the script again to resume.")
+  finally:
+    response.close()
 
 
 def stream_to_pbzip2(compressed_chunks, chunk_size=65536) -> str:
@@ -68,26 +123,18 @@ def stream_to_pbzip2(compressed_chunks, chunk_size=65536) -> str:
       # Occurs if pbzip2 exits early (e.g., due to an error)
       pass
 
-  # Start the writer thread
   writer_thread = threading.Thread(target=writer)
   writer_thread.start()
 
-  # Read the decompressed stream from stdout chunk by chunk
   try:
     while True:
-      # Read a chunk of decompressed bytes
       decompressed_bytes = process.stdout.read(chunk_size)
       if not decompressed_bytes:
         break
-
-      # Decode to text (adjust encoding if your data isn't utf-8)
       yield decompressed_bytes.decode('utf-8', errors='replace')
   finally:
-    # Clean up the process and thread
     writer_thread.join()
     process.wait()
-
-    # Check for errors
     if process.returncode != 0:
       stderr_output = process.stderr.read().decode('utf-8', errors='ignore')
       raise subprocess.CalledProcessError(
@@ -126,102 +173,24 @@ def extract_wikidata(buffer: str):
           continue
 
 
-def process_file(input_filename: str = INPUT_FILE):
-  with open(input_filename, "rb") as bz:
-    def file_chunk_generator():
-      while True:
-        chunk = bz.read(CHUNK_SIZE)
-        if not chunk:
-          break
-        yield chunk
-
-    print("Decompressing stream:")
-    buffer = ''
+def get_resume_byte():
+  """Reads the last successfully saved byte offset from the progress file."""
+  if os.path.exists(PROGRESS_FILE):
     try:
-      for text_chunk in stream_to_pbzip2(file_chunk_generator()):
-        buffer += text_chunk
-        extract_wikidata(buffer)
-
-        # Periodically write current progressive byte (not checkpoint byte) to disk
-        global current_bytes
-        save_progress(current_bytes)
-        print(f"\rProcessed {current_bytes / (1024**3):.2f} GB of compressed stream...", end="", flush=True)
-    except subprocess.CalledProcessError as e:
-      print(f"\nError running pbzip2: {e.stderr}")
+      with open(PROGRESS_FILE, "r") as f:
+        return int(f.read().strip())
+    except ValueError:
+      return 0
+  return 0
 
 
-def download_stream():
-  # Load progress
-  start_byte = get_resume_byte()
-  headers = {}
-
-  if start_byte > 0:
-    print(f"Resuming download from byte offset: {start_byte}...")
-    headers["Range"] = f"bytes={start_byte}-"
-  else:
-    print("Starting download from the beginning...")
-
-  try:
-    response = requests.get(constants.WIKIDATA_ENTITIES_URL, headers=headers, stream=True, timeout=30)
-    if response.status_code == 416:
-      print("Finished or range invalid.")
-      return
-    response.raise_for_status()
-  except requests.exceptions.RequestException as e:
-    print(f"Connection failed: {e}")
-    sys.exit(1)
-
-  # Track two positions:
-  # 1. current_bytes: where we are currently reading
-  # 2. last_good_byte: the safe checkpoint before the current compression block
-  current_bytes = start_byte
-  last_good_byte = start_byte
-
-  buffer = ""
-
-  try:
-    for text_chunk in stream_to_pbzip2(response.iter_content(
-        chunk_size=CHUNK_SIZE
-      )):
-      current_bytes += len(CHUNK_SIZE)
-      if not text_chunk:
-        continue
-
-      try:
-        # Attempt to decompress the incoming network chunk
-        buffer += text_chunk
-        extract_wikidata(buffer)
-
-        # If decompression succeeded, this chunk was safely processed.
-        # Update our absolute position tracker.
-        save_progress(current_bytes)
-
-        # If the decompressor has completely finished a BZ2 stream block
-        # and is waiting for a new one, we can safely checkpoint this position.
-        last_good_byte = current_bytes
-
-      except (ValueError, OSError) as e:
-        # This catches block alignment issues, truncation errors, or corruption
-        print(f"\n[!] Decompression error encountered: {e}")
-        print(f"Rolling back network stream to last known good checkpoint: {last_good_byte}")
-
-        # Close the broken response stream
-        response.close()
-
-        # Backoff delay to let the network settle down or avoid spamming the server
-        print("Waiting 10 seconds before automated retry...")
-        time.sleep(10)
-
-        # Recursively restart the stream loop from the safe position
-        return download_stream()
-
-      print(f"\rProcessed {current_bytes / (1024**3):.2f} GB of compressed stream...", end="", flush=True)
-
-  except (requests.exceptions.RequestException, ConnectionResetError) as e:
-    print(f"\n[!] Network dropped: {e}")
-    print("Progress safely saved. Run the script again to resume.")
-  finally:
-    response.close()
+def save_progress(byte_offset):
+  """Saves the current byte offset to disk safely."""
+  # Write to a temporary file first, then replace to prevent corruption
+  temp_file = PROGRESS_FILE + ".tmp"
+  with open(temp_file, "w") as f:
+    f.write(str(byte_offset))
+  os.replace(temp_file, PROGRESS_FILE)
 
 
 if __name__ == "__main__":
@@ -235,4 +204,3 @@ if __name__ == "__main__":
       process_file(input_filename)
     case _:
       pass
-
