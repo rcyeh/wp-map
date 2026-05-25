@@ -10,11 +10,11 @@ def download(url: str, filename: str):
   if response.status_code == 200:
     with open(filename, "wb") as f:
       f.write(response.content)
-    
+
 
 if __name__ == "__main__":
   for url in [
-      constants.QRANK_CSV_URL, 
+      constants.QRANK_CSV_URL,
     ]:
     filename = url.split('/')[-1]
     if not os.path.exists(filename):

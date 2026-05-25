@@ -38,7 +38,7 @@ def save_progress(byte_offset):
 def stream_to_pbzip2(compressed_chunks, chunk_size=65536) -> str:
   """
   Streams compressed bz2 chunks into pbzip2 and yields decompressed text chunks.
-  
+
   :param compressed_chunks: An iterable (like a list or generator) of bytes.
 
   yields string
@@ -79,14 +79,14 @@ def stream_to_pbzip2(compressed_chunks, chunk_size=65536) -> str:
       decompressed_bytes = process.stdout.read(chunk_size)
       if not decompressed_bytes:
         break
-      
+
       # Decode to text (adjust encoding if your data isn't utf-8)
       yield decompressed_bytes.decode('utf-8', errors='replace')
   finally:
     # Clean up the process and thread
     writer_thread.join()
     process.wait()
-    
+
     # Check for errors
     if process.returncode != 0:
       stderr_output = process.stderr.read().decode('utf-8', errors='ignore')
@@ -117,7 +117,7 @@ def extract_wikidata(buffer: str):
             enwiki = sitelinks.get("enwiki", {}).get("title")
             coords = entity['claims']['P625'].get("mainsnak").get("datavalue").get("value")
 
-            if q_id and enwiki and coords and coords['globe'].endswith('/Q2'):
+            if q_id and enwiki and coords and coords['globe'].endswith('/Q2') and 'latitude' in coords and 'longitude' in coords:
               record = {'q': q_id, 't': enwiki, 'y': coords['latitude'], 'x': coords['longitude']}
               earth_coords.write(f"{json.dumps(record)}\n")
             else:
@@ -154,7 +154,7 @@ def download_stream():
   # Load progress
   start_byte = get_resume_byte()
   headers = {}
-  
+
   if start_byte > 0:
     print(f"Resuming download from byte offset: {start_byte}...")
     headers["Range"] = f"bytes={start_byte}-"
@@ -171,12 +171,12 @@ def download_stream():
     print(f"Connection failed: {e}")
     sys.exit(1)
 
-  # Track two positions: 
+  # Track two positions:
   # 1. current_bytes: where we are currently reading
   # 2. last_good_byte: the safe checkpoint before the current compression block
   current_bytes = start_byte
-  last_good_byte = start_byte 
-  
+  last_good_byte = start_byte
+
   buffer = ""
 
   try:
@@ -186,17 +186,17 @@ def download_stream():
       current_bytes += len(CHUNK_SIZE)
       if not text_chunk:
         continue
-      
+
       try:
         # Attempt to decompress the incoming network chunk
         buffer += text_chunk
         extract_wikidata(buffer)
-        
+
         # If decompression succeeded, this chunk was safely processed.
         # Update our absolute position tracker.
         save_progress(current_bytes)
-        
-        # If the decompressor has completely finished a BZ2 stream block 
+
+        # If the decompressor has completely finished a BZ2 stream block
         # and is waiting for a new one, we can safely checkpoint this position.
         last_good_byte = current_bytes
 
@@ -204,14 +204,14 @@ def download_stream():
         # This catches block alignment issues, truncation errors, or corruption
         print(f"\n[!] Decompression error encountered: {e}")
         print(f"Rolling back network stream to last known good checkpoint: {last_good_byte}")
-        
+
         # Close the broken response stream
         response.close()
-        
+
         # Backoff delay to let the network settle down or avoid spamming the server
         print("Waiting 10 seconds before automated retry...")
         time.sleep(10)
-        
+
         # Recursively restart the stream loop from the safe position
         return download_stream()
 
@@ -235,4 +235,4 @@ if __name__ == "__main__":
       process_file(input_filename)
     case _:
       pass
-  
+

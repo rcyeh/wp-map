@@ -1,22 +1,47 @@
 # wp-map: Wikipedia x Map
 
-Show Wikipedia articles with coordinates near a neighborhood, to facilitate
-local discovery.
+Show the most-popular Wikipedia articles with coordinates near a neighborhood,
+to facilitate exploration and discovery.
 
 URL: https://rcyeh.github.io/wp-map/
 
 ## Repo organization
 
-* `docs` Website
-  * `t` Protobuf files with geo-located Wikipedia article titles
-* `process` Protobuf-generation process
+- `docs` Website
+  - `t` Protobuf files with geo-located Wikipedia article titles
+- `process` Protobuf-generation process
+
+## Micro-optimizations
+
+### Show labels on the points of interest, so I know what each map marker is.
+
+
+
+### Instead of showing all articles, prioritize popular articles.
+
+I want to explore a neighborhood, I am likely to want to learn about
+more-popular pages before less-popular pages. This will tend to reinforce
+the Matthew effect.
+
+### Use 14-kB packets.
+
+Data files up to 14 kB will be sent all at once, without needing to await a
+TCP ack.
+
+### Try to minimize network calls.
+
+Compress the data transmitted over the wire with protobuf encoding.
+Provide points of interest at the lowest zoom level possible, and don't
+provide unnecessarily-high resolution data.
+
+
 
 ## Comparison to Alternatives
 
 This site:
 
 - Shows only a few points. Does not suggest where there might be more points.
-- With labels on every drawn point.
+- Provides labels on the (user-selectable) N most popular drawn points.
 - Extremely fast.
 - leaflet + OpenStreetMap
 
@@ -61,4 +86,3 @@ https://wikimaps.vercel.app/
 - Colors points-of-interest by category.
 - Used to be very slow. Now faster but still poky.
 - leaflet + OpenStreetMap
-

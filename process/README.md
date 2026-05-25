@@ -41,6 +41,10 @@ So the client javascript will already know what tiles exist. Maybe use this data
 - If those are the leaf nodes in a tree, then there will be at most 13,000 internal parent nodes.
 - Total 26,000 (z, x, y) coordinates: barely 300 kB. Can do some testing to see if it's faster to use a flat set of tuples, or a hierarchical structure.
 
+### Decision: Use protobufs.
+
+`protoc -I=. --python_out=. --plugin=protoc-gen-ts=../node_modules/.bin/protoc-gen-ts --ts_out=../docs/ ./wpmaps.proto
+
 ## Getting the dumps
 
 https://dumps.wikimedia.org/other/pageviews/readme.html

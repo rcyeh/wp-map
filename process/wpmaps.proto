@@ -2,6 +2,20 @@ syntax = "proto3";
 
 package wpmaps;
 
+message TileSet {
+  // This represents a sorted array of uint32.
+  // Each element is a delta from the previous.
+  // Each original uint32 element encodes an (x, y) tile index, with
+  // x, y up to (2**15 - 1).  These are packed as (x << 15) | y
+  repeated uint32 deltas = 1; 
+}
+
+message TileSetList {
+  // For each zoom level (indexed by zoom level, 0-15), a list of available
+  // tile indices.
+  repeated TileSet tilesets = 1;
+}
+
 message WikiGeoData {
   // The number following the Q in the Wikidata ID.
   // Current max around 5e8. So we'll use all four bytes on average, saving

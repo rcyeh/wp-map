@@ -44,9 +44,12 @@ if __name__ == "__main__":
   print(f'{datetime.datetime.now().isoformat()} - read_qrank')
   read_qrank()
   print(f'{datetime.datetime.now().isoformat()} - sort')
-  page_wpr_list = [wpr for wpr in sorted(page_wpr_map.values(), key=lambda wpr: -wpr.get('k', 0))]
+  page_wpr_list = [wpr for wpr in sorted(
+      page_wpr_map.values(),
+      key=lambda wpr: -wpr.get('k', 0)
+  )]
   del page_wpr_map
   print(f'{datetime.datetime.now().isoformat()} - write joined')
-  with gzip.open('joined.jsonl.gz', 'wt') as f:
+  with gzip.open(constants.JOINED_FILE, 'wt') as f:
     for wpr in page_wpr_list:
       f.write(f'{json.dumps(wpr)}\n')

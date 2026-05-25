@@ -13,15 +13,19 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0cwpmaps.proto\x12\x06wpmaps\"_\n\x0bWikiGeoData\x12\x0c\n\x04q_id\x18\x01 \x01(\r\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x11\n\tlongitude\x18\x03 \x01(\x11\x12\x10\n\x08latitude\x18\x04 \x01(\x11\x12\x0f\n\x07logrank\x18\x05 \x01(\r\"5\n\x0fWikiGeoDataList\x12\"\n\x05items\x18\x01 \x03(\x0b\x32\x13.wpmaps.WikiGeoDatab\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0cwpmaps.proto\x12\x06wpmaps\"\x19\n\x07TileSet\x12\x0e\n\x06\x64\x65ltas\x18\x01 \x03(\r\"0\n\x0bTileSetList\x12!\n\x08tilesets\x18\x01 \x03(\x0b\x32\x0f.wpmaps.TileSet\"_\n\x0bWikiGeoData\x12\x0c\n\x04q_id\x18\x01 \x01(\r\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x11\n\tlongitude\x18\x03 \x01(\x11\x12\x10\n\x08latitude\x18\x04 \x01(\x11\x12\x0f\n\x07logrank\x18\x05 \x01(\r\"5\n\x0fWikiGeoDataList\x12\"\n\x05items\x18\x01 \x03(\x0b\x32\x13.wpmaps.WikiGeoDatab\x06proto3')
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'wpmaps_pb2', globals())
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
-  _WIKIGEODATA._serialized_start=24
-  _WIKIGEODATA._serialized_end=119
-  _WIKIGEODATALIST._serialized_start=121
-  _WIKIGEODATALIST._serialized_end=174
+  _TILESET._serialized_start=24
+  _TILESET._serialized_end=49
+  _TILESETLIST._serialized_start=51
+  _TILESETLIST._serialized_end=99
+  _WIKIGEODATA._serialized_start=101
+  _WIKIGEODATA._serialized_end=196
+  _WIKIGEODATALIST._serialized_start=198
+  _WIKIGEODATALIST._serialized_end=251
 # @@protoc_insertion_point(module_scope)

@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@protobuf-ts/plugin": "^2.11.1",
+    "@protobuf-ts/runtime": "^2.11.1",
+    "google-protobuf": "^4.0.2",
+    "typescript": "^6.0.3"
+  }
+}

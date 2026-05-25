@@ -1,11 +1,39 @@
-import { tileTree } from "./t/tile-tree.js";
+import {
+  TileSet,
+  TileSetList,
+  WikiGeoData,
+  WikiGeoDataList,
+} from "./wpmaps.js";
 
 let map;
 let markerLayer;
+let tileSetCache = null; // zoom-level-indexed list of sorted tile indices
 // List of unique points
 const pointRegistry = new Map();
 const markersOnMap = new Map(); // Key: point.id, Value: Leaflet Marker instance
 const downloadedTiles = new Set(); // Tracks fileKeys already fetched
+
+async function initTileRegistry(url = "t/tile_set_list.pbf") {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Failed to get tile set list");
+    const buffer = await response.arrayBuffer();
+    const tileSetList = TileSetList.fromBinary(new Uint8Array(buffer));
+    tileSetCache = tileSetList.tilesets.map((tileSet) => {
+      const deltas = tileSet.deltas;
+      if (deltas.length === 0) return new Int32Array(0);
+      const tidx = new Int32Array(deltas.length);
+      tidx[0] = deltas[0];
+      for (let i = 1; i < deltas.length; ++i) {
+        tidx[i] = tidx[i - 1] + deltas[i];
+      }
+      return tidx;
+    });
+  } catch (error) {
+    console.error("Failed initTileRegistry:", error);
+  }
+}
+await initTileRegistry();
 
 function waitForGlobal(variableName, callback, nextCheckMs = 100) {
   if (window[variableName]) {
@@ -70,10 +98,25 @@ function createCustomMarker(loc) {
   return marker;
 }
 
+function createCustomDot(loc) {
+  const minorPoi = L.circleMarker([loc.lat, loc.lon], {
+    radius: 4,
+    fillColor: "#0078ff",
+    color: "#fff",
+    weight: 1,
+    fillOpacity: 0.3,
+  });
+  minorPoi.on("click", () => {
+    window.open(loc.url, "_blank", "nooopener,noreferrer");
+  });
+  return minorPoi;
+}
+
 function updateMapDisplay() {
   const bounds = map.getBounds();
-  // const userLimit = parseInt(document.getElementById("limit-slider").value);
-  const userLimit = 5;
+  const maxPointsOfInterest = parseInt(
+    document.getElementById("marker-limit").value,
+  );
 
   // 1. Get all points currently in view
   let inView = Array.from(pointRegistry.values()).filter((p) =>
@@ -81,10 +124,10 @@ function updateMapDisplay() {
   );
 
   // 2. Sort by popularity
-  // inView.sort((a, b) => a.name - b.name);
+  inView.sort((a, b) => b.logrank - a.logrank);
 
   // 3. Render the top X
-  const pointsToDisplay = inView.slice(0, userLimit);
+  const pointsToDisplay = inView.slice(0, maxPointsOfInterest);
   const nextIds = new Set(pointsToDisplay.map((p) => p.name));
 
   for (const [name, marker] of markersOnMap.entries()) {
@@ -100,52 +143,109 @@ function updateMapDisplay() {
       markersOnMap.set(p.name, marker);
     }
   });
+  inView.slice(maxPointsOfInterest, maxPointsOfInterest * 4).forEach((p) => {
+    if (!markersOnMap.has(p.name)) {
+      const marker = createCustomDot(p);
+      markerLayer.addLayer(marker);
+      // markersOnMap.set(p.name, marker);
+    }
+  });
 }
 
-function fetchDataFile(fileKey) {
+function binarySearch(array, element) {
+  let left = 0;
+  let right = array.length - 1;
+  while (left <= right) {
+    const mid = (left + right) >> 1;
+    if (element === array[mid]) {
+      return true;
+    }
+    if (element < array[mid]) {
+      right = mid - 1;
+    } else {
+      left = mid + 1;
+    }
+  }
+  return element === array[left];
+}
+
+function getBestAvailableTile(z, x, y) {
+  let currentZ = z;
+  let currentX = x;
+  let currentY = y;
+  // Walk up the tree until we find a tile that actually exists in our index
+  while (currentZ >= 0) {
+    if (
+      binarySearch(tileSetCache[currentZ], ((currentX << 15) | currentY) >>> 0)
+    ) {
+      // Found it! Return the coordinates of the file we need to fetch
+      return { z: currentZ, x: currentX, y: currentY };
+    }
+    // Target next lower zoom level using floor division math
+    currentZ = currentZ - 1;
+    currentX = currentX >> 1; // Bitwise equivalent of Math.floor(x / 2)
+    currentY = currentY >> 1; // Bitwise equivalent of Math.floor(y / 2)
+  }
+  return null; // Truly empty part of the world (e.g., mid-ocean)
+}
+
+async function fetchDataFile(fileKey) {
   if (downloadedTiles.has(fileKey)) return;
   downloadedTiles.add(fileKey);
 
-  // fetch(`/data/${fileKey}.json`)
-  fetch("t/locations.json")
-    .then((res) => (res.ok ? res.json() : []))
-    .then((points) => {
-      console.log(`Fetched ${points}`);
-      points.forEach((p) => {
-        // Use point ID to ensure unique entry in global registry
-        if (!pointRegistry.has(p.name)) {
-          console.log(`Saving ${JSON.stringify(p)}`);
-          pointRegistry.set(p.name, p);
-        }
-      });
-      console.log(`updateMapDisplay`);
-      updateMapDisplay(); // Trigger your 5-100 point filter
-    })
-    .catch((e) => {
-      // Handle missing tiles (e.g., ocean or empty areas)
-      console.error(e);
-      console.log(`No data for ${fileKey}`);
-      downloadedTiles.delete(fileKey);
+  try {
+    // console.log(`fetching t/${fileKey}.pbf`);
+    const response = await fetch(`t/${fileKey}.pbf`);
+    const buffer = await response.arrayBuffer();
+    const wikiGeoDataList = WikiGeoDataList.fromBinary(new Uint8Array(buffer));
+    // console.log(`Fetched ${JSON.stringify(wikiGeoDataList)}`);
+    wikiGeoDataList.items.forEach((wgd) => {
+      // Use point ID to ensure unique entry in global registry
+      if (!pointRegistry.has(wgd.name)) {
+        const p = {
+          name: wgd.name,
+          lat: wgd.latitude * 1e-5,
+          lon: wgd.longitude * 1e-5,
+          logrank: wgd.logrank,
+          url: `https://en.wikipedia.org/wiki/${encodeURIComponent(
+            wgd.name.replaceAll(" ", "_"),
+          )}`,
+        };
+
+        // console.log(`Saving ${JSON.stringify(p)}`);
+        pointRegistry.set(p.name, p);
+      }
     });
+    // console.log(`updateMapDisplay`);
+    updateMapDisplay(); // Trigger your 5-100 point filter
+  } catch (error) {
+    // Handle missing tiles (e.g., ocean or empty areas)
+    console.error(error);
+    console.log(`No data for ${fileKey}`);
+    downloadedTiles.delete(fileKey);
+  }
 }
 
 function fetchDataFor(coords) {
   // This logic to move to tileTree.
   // Map (coords.z, coords.x, coords.y) -> fetchKey
-  // Coarsen: e.g., always fetch at 3 zoom levels higher (larger area)
-  const fetchZoom = Math.max(0, coords.z - 3);
-  const fetchX = Math.floor(coords.x / Math.pow(2, 3));
-  const fetchY = Math.floor(coords.y / Math.pow(2, 3));
 
-  const fetchKey = `${fetchZoom}/${fetchX}/${fetchY}`;
+  const availableZ = Math.max(0, Math.min(15, coords.z));
+  const zoomFactor = Math.pow(2, availableZ - coords.z);
+  const currentX = Math.floor(coords.x * zoomFactor);
+  const currentY = Math.floor(coords.y * zoomFactor);
+
+  const tile = getBestAvailableTile(availableZ, currentX, currentY);
+  if (!tile) {
+    return;
+  }
+  const fetchKey = `${tile.z}/${tile.x}/${tile.y}`;
 
   console.log(
     `${coords} (${JSON.stringify(coords)}) -> fetchKey = ${fetchKey}`,
   );
 
-  const debugFetchKey = "locations.json";
-
-  fetchDataFile(debugFetchKey);
+  fetchDataFile(fetchKey);
 
   // const url = `http://localhost:8000/tiles/${coords.z}/${coords.x}/${coords.y}.pbf`;
 

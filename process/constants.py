@@ -14,3 +14,5 @@ WIKIDATA_EXTRACT_FILE = "q_title_latlon.jsonl.gz"
 JOINED_FILE = "joined.jsonl.gz"
 
 PATH_TO_TILE_DIR = "../docs/t"
+TILE_CHECKER_FILENAME = "tile_sets.js"
+TILE_SET_LIST_FILENAME = "tile_set_list.pbf"
