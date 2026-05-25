@@ -64,7 +64,7 @@ def loop_over_zoom(allpoints: list[dict]) -> dict[int, list]:
   for z in range(MAXZOOM, -1, -1):
     print(f'{datetime.datetime.now().isoformat()} - write_some_tiles -> {z} ...', end='', flush=True)
     tiles_written[z] = write_some_tiles(allpoints, z)
-    print(f'{datetime.datetime.now().isoformat()} - write_some_tiles -> {z} ... wrote {len(tiles_written[z])} tiles')
+    print(f' wrote {len(tiles_written[z])} tiles')
   return tiles_written
 
 def write_javascript_tile_checker(tiles_written: dict[int, list]):
@@ -106,7 +106,5 @@ if __name__ == "__main__":
   print(f'{datetime.datetime.now().isoformat()} - loop_over_zoom')
   tiles_written = loop_over_zoom(allpoints)
 
-  print(f'{datetime.datetime.now().isoformat()} - write_javascript_tile_checker')
-  write_javascript_tile_checker(tiles_written)
   print(f'{datetime.datetime.now().isoformat()} - write_protobuf_tile_sets')
   write_protobuf_tile_sets(tiles_written)

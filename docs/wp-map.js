@@ -35,9 +35,9 @@ async function initTileRegistry(url = "t/tile_set_list.pbf") {
 }
 await initTileRegistry();
 
-function waitForGlobal(variableName, callback, nextCheckMs = 100) {
+async function waitForGlobal(variableName, callback, nextCheckMs = 100) {
   if (window[variableName]) {
-    callback();
+    await callback();
   } else {
     setTimeout(
       () => waitForGlobal(variableName, callback, nextCheckMs * 1.5),
@@ -50,11 +50,26 @@ function waitForGlobal(variableName, callback, nextCheckMs = 100) {
 //    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
 //    crossorigin=""
 //  ></script>
-waitForGlobal("L", initMap);
+await waitForGlobal("L", initMap);
 
-function initMap() {
+async function getInitialLatLon() {
+  try {
+    const response = await fetch("http://ip-api.com/json/");
+    if (!response.ok) return { lat: 0, lon: 0, zoom: 5, country: null };
+    const data = await response.json();
+    if (data.status === "fail") {
+      return { lat: 0, lon: 0, zoom: 5, country: null };
+    }
+    return { lat: data.lat, lon: data.lon, zoom: 11, country: data.country };
+  } catch (error) {
+    return { lat: 0, lon: 0, zoom: 5, country: null };
+  }
+}
+
+async function initMap() {
+  const startLL = await getInitialLatLon();
   // 1. Initialize the map and set its center and zoom level
-  map = L.map("map").setView([51.505, -0.09], 13);
+  map = L.map("map").setView([startLL.lat, startLL.lon], startLL.zoom);
   // 1. The Global Marker Layer
   markerLayer = L.layerGroup().addTo(map);
 
@@ -83,6 +98,17 @@ function initMap() {
   new poiLayer().addTo(map);
 }
 
+function getDeterministicHash(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 33) ^ str.charCodeAt(i);
+  }
+  // Convert to a floating point number between -1.0 and 1.0
+  return ((hash >>> 0) / 4294967295) * 2 - 1;
+}
+
+const MAX_JITTER_DEGREES = 0.00015;
+
 function createCustomMarker(loc) {
   const customIcon = L.divIcon({
     html: `
@@ -94,12 +120,18 @@ function createCustomMarker(loc) {
     iconSize: null,
     iconAnchor: [0, 41],
   });
-  const marker = L.marker([loc.lat, loc.lon], { icon: customIcon });
+  const hashX = getDeterministicHash("x_" + loc.name) * MAX_JITTER_DEGREES;
+  const hashY = getDeterministicHash("y_" + loc.name) * MAX_JITTER_DEGREES;
+  const marker = L.marker([loc.lat + hashY, loc.lon + hashX], {
+    icon: customIcon,
+  });
   return marker;
 }
 
 function createCustomDot(loc) {
-  const minorPoi = L.circleMarker([loc.lat, loc.lon], {
+  const hashX = getDeterministicHash("x_" + loc.name) * MAX_JITTER_DEGREES;
+  const hashY = getDeterministicHash("y_" + loc.name) * MAX_JITTER_DEGREES;
+  const minorPoi = L.circleMarker([loc.lat + hashY, loc.lon + hashX], {
     radius: 4,
     fillColor: "#0078ff",
     color: "#fff",
@@ -147,7 +179,6 @@ function updateMapDisplay() {
     if (!markersOnMap.has(p.name)) {
       const marker = createCustomDot(p);
       markerLayer.addLayer(marker);
-      // markersOnMap.set(p.name, marker);
     }
   });
 }
@@ -194,11 +225,9 @@ async function fetchDataFile(fileKey) {
   downloadedTiles.add(fileKey);
 
   try {
-    // console.log(`fetching t/${fileKey}.pbf`);
     const response = await fetch(`t/${fileKey}.pbf`);
     const buffer = await response.arrayBuffer();
     const wikiGeoDataList = WikiGeoDataList.fromBinary(new Uint8Array(buffer));
-    // console.log(`Fetched ${JSON.stringify(wikiGeoDataList)}`);
     wikiGeoDataList.items.forEach((wgd) => {
       // Use point ID to ensure unique entry in global registry
       if (!pointRegistry.has(wgd.name)) {
@@ -216,7 +245,6 @@ async function fetchDataFile(fileKey) {
         pointRegistry.set(p.name, p);
       }
     });
-    // console.log(`updateMapDisplay`);
     updateMapDisplay(); // Trigger your 5-100 point filter
   } catch (error) {
     // Handle missing tiles (e.g., ocean or empty areas)
@@ -227,10 +255,9 @@ async function fetchDataFile(fileKey) {
 }
 
 function fetchDataFor(coords) {
-  // This logic to move to tileTree.
   // Map (coords.z, coords.x, coords.y) -> fetchKey
-
-  const availableZ = Math.max(0, Math.min(15, coords.z));
+  const fetchAtLowerZoom = 0; // Set to positive values to force fewer network requests
+  const availableZ = Math.max(0, Math.min(15, coords.z - fetchAtLowerZoom));
   const zoomFactor = Math.pow(2, availableZ - coords.z);
   const currentX = Math.floor(coords.x * zoomFactor);
   const currentY = Math.floor(coords.y * zoomFactor);
@@ -240,27 +267,5 @@ function fetchDataFor(coords) {
     return;
   }
   const fetchKey = `${tile.z}/${tile.x}/${tile.y}`;
-
-  console.log(
-    `${coords} (${JSON.stringify(coords)}) -> fetchKey = ${fetchKey}`,
-  );
-
   fetchDataFile(fetchKey);
-
-  // const url = `http://localhost:8000/tiles/${coords.z}/${coords.x}/${coords.y}.pbf`;
-
-  // .then((response) => response.arrayBuffer())
-  // .then((buffer) => {
-  //   const data = decodePBF(buffer); // Using a library like pbf or your custom parser
-
-  //   // 2. Filter by user-selected category (e.g., 'museum')
-  //   const activeCategory = document.getElementById("filter").value;
-  //   const filtered = sortedPois.filter(
-  //     (poi) => activeCategory === "all" || poi.category === activeCategory,
-  //   );
-
-  // // 3. Render top 10 with labels, others as dots
-  // filtered.forEach((poi, index) => {
-  //   this.renderPoint(tile, poi, index < 10);
-  // });
 }

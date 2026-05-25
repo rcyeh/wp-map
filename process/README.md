@@ -45,6 +45,8 @@ So the client javascript will already know what tiles exist. Maybe use this data
 
 `protoc -I=. --python_out=. --plugin=protoc-gen-ts=../node_modules/.bin/protoc-gen-ts --ts_out=../docs/ ./wpmaps.proto
 
+`npx tsc wpmaps.ts --target es2022 --module esnext`
+
 ## Getting the dumps
 
 https://dumps.wikimedia.org/other/pageviews/readme.html
