@@ -173,6 +173,11 @@ function updateMapDisplay() {
   });
 }
 
+const markerLimit = document.getElementById("marker-limit");
+markerLimit.addEventListener("change", (event) => {
+  updateMapDisplay();
+});
+
 function binarySearch(array, element) {
   let left = 0;
   let right = array.length - 1;
