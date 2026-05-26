@@ -2,13 +2,19 @@
 
 Pages do not change that frequently. Also, the process of:
 
-1. getting the dumps (minutes),
-2. loading to database (12 hours),
-3. generating extracts, writing as mvt (???)
+1. getting the dumps (hour),
+2. generating extracts (minutes)
 
 can take a day.
 
-### Decision: Bypass the database.
+### Protocol: refresh articles database
+
+1. `python3 download_extract_wikidata.py`
+2. `python3 download_qrank.py`
+3. `python3 join.py`
+4. `python3 write.py`
+
+### Decision: Bypass the database dumps.
 
 Instead:
 
@@ -26,7 +32,8 @@ Instead:
 
 ### Decision: Mercantile for saving tiles.
 
-Cluster points to make 100- to 200-point tile files. These will be denser (and go to higher zoom levels) at high-density places than at low-density places.
+Cluster points to make 100- to 200-point tile files. These will be denser (and
+go to higher zoom levels) at high-density places than at low-density places.
 At lower density places, might need to zoom out to see.
 
 In the Javascript, when it requests an (z, x, y) for a tile, provide a map:
@@ -34,12 +41,21 @@ In the Javascript, when it requests an (z, x, y) for a tile, provide a map:
 - identity if in a dense place: directly request the (z, x, y) points db tile.
 - redirect to request next coarser resolution if the tile doesn't exist
 
-So the client javascript will already know what tiles exist. Maybe use this data structure with this logic:
+So the client javascript will already know what tiles exist. Maybe use this
+data structure with this logic:
 
-- If you find the (z, x, y), then request it. Otherwise, look for (z-1, x // 2, y // 2).
-- There are 1.3 MM points. Suppose I use 100-point tile files --- there will be 13,000 of these.
-- If those are the leaf nodes in a tree, then there will be at most 13,000 internal parent nodes.
-- Total 26,000 (z, x, y) coordinates: barely 300 kB. Can do some testing to see if it's faster to use a flat set of tuples, or a hierarchical structure.
+- If you find the (z, x, y), then request it. Otherwise, look for
+  (z-1, x // 2, y // 2).
+- There are 1.3 MM points. Suppose I use 100-point tile files --- there will be
+  13,000 of these.
+- If those are the leaf nodes in a tree, then there will be at most 13,000
+  internal parent nodes.
+- Total 26,000 (z, x, y) coordinates: barely 300 kB. Can do some testing to see
+  if it's faster to use a flat set of tuples, or a hierarchical structure.
+- Ultimately decided to save 20- to 300-point tile files.  This will exclude
+  points in a sparse neighborhood (fewer than 20 points in a sq km) that are
+  not among the top 300 most popular points when combined with neighboring
+  tiles.
 
 ### Decision: Use protobufs.
 
