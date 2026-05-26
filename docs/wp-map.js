@@ -10,7 +10,8 @@ let markerLayer;
 let tileSetCache = null; // zoom-level-indexed list of sorted tile indices
 // List of unique points
 const pointRegistry = new Map();
-const markersOnMap = new Map(); // Key: point.id, Value: Leaflet Marker instance
+const labeledMarkers = new Map(); // Key: point.id, Value: Leaflet Marker instance
+const dotMarkers = new Map(); // Key: point.id, Value: Leaflet Marker instance
 const downloadedTiles = new Set(); // Tracks fileKeys already fetched
 const MAX_JITTER_DEGREES = 0.00015;
 const markerLimit = document.getElementById("marker-limit");
@@ -114,23 +115,26 @@ function updateMapDisplay() {
   const pointsToDisplay = inView.slice(0, maxPointsOfInterest);
   const nextIds = new Set(pointsToDisplay.map((p) => p.name));
 
-  for (const [name, marker] of markersOnMap.entries()) {
+  for (const [name, marker] of labeledMarkers.entries()) {
     if (!nextIds.has(name)) {
       markerLayer.removeLayer(marker);
-      markersOnMap.delete(name);
+      labeledMarkers.delete(name);
+      if (!dotMarkers.has(name) && pointRegistry.has(name)) {
+        const dot = createCustomDot(pointRegistry[name]);
+        if (dot) markerLayer.addLayer(dot);
+      }
     }
   }
   pointsToDisplay.forEach((p) => {
-    if (!markersOnMap.has(p.name)) {
+    if (!labeledMarkers.has(p.name)) {
       const marker = createCustomMarker(p);
       markerLayer.addLayer(marker);
-      markersOnMap.set(p.name, marker);
     }
   });
   inView.slice(maxPointsOfInterest, maxPointsOfInterest * 4).forEach((p) => {
-    if (!markersOnMap.has(p.name)) {
-      const marker = createCustomDot(p);
-      markerLayer.addLayer(marker);
+    if (!dotMarkers.has(p.name)) {
+      const dot = createCustomDot(p);
+      if (dot) markerLayer.addLayer(dot);
     }
   });
 }
@@ -151,10 +155,12 @@ function createCustomMarker(loc) {
   const marker = L.marker([loc.lat + hashY, loc.lon + hashX], {
     icon: customIcon,
   });
+  labeledMarkers.set(loc.name, marker);
   return marker;
 }
 
 function createCustomDot(loc) {
+  if (!loc) return null;
   const hashX = getDeterministicHash("x_" + loc.name) * MAX_JITTER_DEGREES;
   const hashY = getDeterministicHash("y_" + loc.name) * MAX_JITTER_DEGREES;
   const minorPoi = L.circleMarker([loc.lat + hashY, loc.lon + hashX], {
@@ -167,6 +173,7 @@ function createCustomDot(loc) {
   minorPoi.on("click", () => {
     window.open(loc.url, "_blank", "nooopener,noreferrer");
   });
+  dotMarkers.set(loc.name, minorPoi);
   return minorPoi;
 }
 
@@ -185,11 +192,11 @@ function getDeterministicHash(str) {
  */
 async function fetchDataFor(tile_idx) {
   // Map (tile_idx.z, tile_idx.x, tile_idx.y) -> fetchKey
-  const fetchAtLowerZoom = 0; // Set to positive values to force fewer network requests
+  const fetchAtLowerZoom = 1; // Set to positive values to force fewer network requests
   const availableZ = Math.max(0, Math.min(15, tile_idx.z - fetchAtLowerZoom));
-  const zoomFactor = Math.pow(2, availableZ - tile_idx.z);
-  const currentX = Math.floor(tile_idx.x * zoomFactor);
-  const currentY = Math.floor(tile_idx.y * zoomFactor);
+  const zoomLog = tile_idx.z - availableZ;
+  const currentX = tile_idx.x >> zoomLog;
+  const currentY = tile_idx.y >> zoomLog;
   const tile = lookupBestAvailableTile(availableZ, currentX, currentY);
   if (!tile) {
     return;
