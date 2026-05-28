@@ -9,10 +9,13 @@ When traveling to new places, I'd like to know: what are the most well-known
 facts about each place? Wikipedia provides a wealth of crowd-sourced
 information, and this app helps browse those pages on a map.
 
+I've placed special consideration on making this mobile-friendly, reducing
+number of network calls and the amount of data transferred.
+
 ## Repo organization
 
 - `docs` Website
-  - `t` Protobuf files with geo-located Wikipedia article titles
+  - `t` tile-oriented protobuf files with geo-located Wikipedia page titles
 - `process` Protobuf-generation process
 
 ## Design decisions / micro-optimizations
@@ -27,7 +30,8 @@ provide a label.
 
 When I am exploring a neighborhood, I am likely to want to learn about
 more-popular pages before less-popular pages. By showing the most popular
-pages, this app will tend to reinforce the Matthew effect.
+pages, this app will tend to reinforce the Matthew effect (where more-popular
+pages will receive more traffic; and less-popular pages will receive less).
 
 Maybe I should enable the user to control a random-selection facility. Or to hide or favorite specific markers.
 
@@ -36,7 +40,26 @@ Maybe I should enable the user to control a random-selection facility. Or to hid
 Data files up to 14 kB will be sent all at once, without needing to await a
 TCP ack. (Dukkipati et al (2010) and RFC 3390)
 
-### Try to minimize network calls.
+At zoom level 15 (where each tile at the equator is 2^-15 x 2^-15 of the
+earth's surface: about 1.2 km x 1.2 km or 0.75 mi x 0.75 mi), over a million
+of the points-of-interest would be the only point in its tile. Each
+point-of-interest is a few integers and a short title. It would be a
+waste to transmit those one-by-one, so I don't make those tiles available.
+If the map view wants to request that, then I'll instead request the nearest
+enclosing tile (at lower zoom) that has collected at least 20 points, up to
+300 points. 20 points is really a waste:
+
+Each point has:
+
+- A 32-bit unsigned integer identifier (takes 5 bytes (29-30 bits))
+- A 32-bit signed integer longitude in 10^-5 degrees (1-meter resolution, fits in 4 bytes (28 bits))
+- A 32-bit signed integer latitude in 10^-5 degrees (1-meter resolution, fits in 4 bytes (28 bits))
+- A 32-bit unsigned integer log ranking (takes 2-3 bytes (14-15 bits))
+- Page title string
+
+or some 30-50 bytes. I'm finding that 300 points will typically fit in 12 kB.
+
+### Minimize network calls.
 
 Compress the data transmitted over the wire with protobuf encoding.
 Provide points of interest at the lowest zoom level possible, and don't
