@@ -94,7 +94,7 @@ async function initMap() {
 
 async function getInitialLatLon() {
   // TODO - use an IP geolocation database for an initial guess.
-  return { lat: 40, lon: -100, zoom: 5 };
+  return { lat: 11.1, lon: 34.2, zoom: 3 };
 }
 
 function updateMapDisplay() {
@@ -115,16 +115,16 @@ function updateMapDisplay() {
   const pointsToDisplay = inView.slice(0, maxPointsOfInterest);
   const nextIds = new Set(pointsToDisplay.map((p) => p.name));
 
-  for (const [name, marker] of labeledMarkers.entries()) {
+  labeledMarkers.forEach((marker, name) => {
     if (!nextIds.has(name)) {
       markerLayer.removeLayer(marker);
       labeledMarkers.delete(name);
       if (!dotMarkers.has(name) && pointRegistry.has(name)) {
-        const dot = createCustomDot(pointRegistry[name]);
+        const dot = createCustomDot(pointRegistry.get(name));
         if (dot) markerLayer.addLayer(dot);
       }
     }
-  }
+  })
   pointsToDisplay.forEach((p) => {
     if (!labeledMarkers.has(p.name)) {
       const marker = createCustomMarker(p);
@@ -150,9 +150,8 @@ function createCustomMarker(loc) {
     iconSize: null,
     iconAnchor: [0, 41],
   });
-  const hashX = getDeterministicHash("x_" + loc.name) * MAX_JITTER_DEGREES;
-  const hashY = getDeterministicHash("y_" + loc.name) * MAX_JITTER_DEGREES;
-  const marker = L.marker([loc.lat + hashY, loc.lon + hashX], {
+  const jitterloc = getJitteredCoordinates(loc);
+  const marker = L.marker([jitterloc.lat, jitterloc.lon], {
     icon: customIcon,
   });
   labeledMarkers.set(loc.name, marker);
@@ -161,20 +160,25 @@ function createCustomMarker(loc) {
 
 function createCustomDot(loc) {
   if (!loc) return null;
-  const hashX = getDeterministicHash("x_" + loc.name) * MAX_JITTER_DEGREES;
-  const hashY = getDeterministicHash("y_" + loc.name) * MAX_JITTER_DEGREES;
-  const minorPoi = L.circleMarker([loc.lat + hashY, loc.lon + hashX], {
-    radius: 4,
+  const jitterloc = getJitteredCoordinates(loc);
+  const minorPoi = L.circleMarker([jitterloc.lat, jitterloc.lon], {
+    radius: 3,
     fillColor: "#0078ff",
     color: "#fff",
     weight: 1,
-    fillOpacity: 0.3,
+    fillOpacity: 0.7,
   });
   minorPoi.on("click", () => {
     window.open(loc.url, "_blank", "nooopener,noreferrer");
   });
   dotMarkers.set(loc.name, minorPoi);
   return minorPoi;
+}
+
+function getJitteredCoordinates(loc) {
+  const hashX = getDeterministicHash("x_" + loc.name) * MAX_JITTER_DEGREES;
+  const hashY = getDeterministicHash("y_" + loc.name) * MAX_JITTER_DEGREES;
+  return { lat: loc.lat + hashY, lon: loc.lon + hashX };
 }
 
 function getDeterministicHash(str) {
@@ -218,7 +222,8 @@ async function fetchDataFor(tile_idx) {
 function lookupBestAvailableTile(z, x, y) {
   // Walk up the tree until we find a tile that actually exists in our index
   while (z >= 0) {
-    if (binarySearch(tileSetCache[z], ((x << 15) | y) >>> 0)) {
+    if (tileSetCache && tileSetCache[z] &&
+        binarySearch(tileSetCache[z], ((x << 15) | y) >>> 0)) {
       return { z: z, x: x, y: y };
     }
     z -= 1;
