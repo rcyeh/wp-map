@@ -59,9 +59,7 @@ data structure with this logic:
 
 ### Decision: Use protobufs.
 
-`protoc -I=. --python_out=. --plugin=protoc-gen-ts=../node_modules/.bin/protoc-gen-ts --ts_out=../docs/ ./wpmaps.proto
-
-`npx tsc wpmaps.ts --target es2022 --module esnext`
+(Moved to [../proto](../proto)
 
 ## Getting the dumps
 

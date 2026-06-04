@@ -1,0 +1,3 @@
+mercantile==1.2.1
+orjson==3.11.9
+Requests==2.34.2
