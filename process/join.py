@@ -24,7 +24,7 @@ def read_qrank():
 
 def read_wikidata():
   records_added = 0
-  with gzip.open(constants.WIKIDATA_EXTRACT_FILE, 'rt', encoding='utf-8') as f:
+  with gzip.open(constants.WIKIDATA_COORDS_EXTRACT_FILE, 'rt', encoding='utf-8') as f:
     for line in f:
       wde = json.loads(line.strip())
       wpr = {
