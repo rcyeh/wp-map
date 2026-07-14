@@ -77,7 +77,15 @@ async function initMap() {
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution:
-      '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> ' +
+      '<span aria-hidden="true">|</span>' +
+      ' <a href="https://www.wikidata.org/">Wikidata</a> ' +
+      '<span aria-hidden="true">|</span>' +
+      ' <a href="https://qrank.toolforge.org/">QRank</a> ' +
+      '<span aria-hidden="true">|</span>' +
+      ' <a href="https://github.com/rcyeh/wp-map/">GitHub</a> ' +
+      '<span aria-hidden="true">|</span>' +
+      ' <a href="https://github.com/rcyeh/wp-map/issues/new">Issue?</a> ',
   }).addTo(map);
 
   // Example: Loading and filtering Wikipedia POIs from your custom tile server

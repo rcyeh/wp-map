@@ -1,10 +1,13 @@
 import datetime
 import gzip
-import orjson
 import os
 import subprocess
+import sys
 import threading
 import time
+
+import orjson
+import requests
 
 import constants
 
@@ -69,6 +72,7 @@ def download_stream():
     sys.exit(1)
   # 1. current_bytes: where we are currently reading
   # 2. last_good_byte: the safe checkpoint before the current compression block
+  global current_bytes
   current_bytes = start_byte
   last_good_byte = start_byte
   buffer = b''
@@ -100,7 +104,7 @@ def download_stream():
     response.close()
 
 
-def stream_to_lbzip2(compressed_chunks, chunk_size=65536) -> Iterable[bytes]:
+def stream_to_lbzip2(compressed_chunks, chunk_size=65536) -> bytes:
   """
   Streams compressed bz2 chunks into lbzip2 and yields decompressed text chunks.
 
@@ -152,36 +156,39 @@ def stream_to_lbzip2(compressed_chunks, chunk_size=65536) -> Iterable[bytes]:
 def extract_wikidata(line: bytes):
   if not COORD_PROP_BYTES in line and not SUBCLASS_PROP_BYTES in line:
     return
-  line.strip()
+  line = line.strip()
   if line.endswith(b","):
     line = line[:-1]
   try:
-    entity = orjson.loads(line.decode('utf-8', errors='ignore'))
+    line_str = line.decode('utf-8', errors='ignore')
+    entity = orjson.loads(line_str)
     if "claims" in entity and "P625" in entity["claims"]:
       q_id = entity["id"]
       sitelinks = entity.get("sitelinks", {})
       enwiki = sitelinks.get("enwiki", {}).get("title")
-      coords = entity['claims']['P625'].get("mainsnak").get("datavalue").get("value")
-      classes = [v.get("mainsnak").get("datavalue").get("value").get("numeric-id") for v in entity['claims']['P31']] if 'P31' in entity['claims'] else []
+      coords = [v.get("mainsnak", {}).get("datavalue", {}).get("value", {}) for v in (entity['claims']['P625'] if isinstance(entity['claims']['P625'], list) else [entity['claims']['P625']])]
+      classes = [v.get("mainsnak", {}).get("datavalue", {}).get("value", {}).get("numeric-id", {}) for v in entity['claims']['P31']] if 'P31' in entity['claims'] else []
 
-      if q_id and enwiki and coords and coords['globe'].endswith('/Q2') and 'latitude' in coords and 'longitude' in coords:
-        record = {'q': q_id, 't': enwiki, 'y': coords['latitude'], 'x': coords['longitude'], 'c': classes}
+      if q_id and enwiki and coords:
+        record = {'q': q_id, 't': enwiki, 'xy': coords, 'c': classes}
         with gzip.open(constants.WIKIDATA_COORDS_EXTRACT_FILE, "at", encoding="utf-8") as earth_coords:
           earth_coords.write(f"{orjson.dumps(record)}\n")
           global coords_written
           coords_written += 1
       else:
         with gzip.open(REJECT_FILE, "at", encoding="utf-8") as reject:
-          reject.write(f'{line}\n')
+          reject.write(f'{line_str}\n')
           global rejects_written
           rejects_written += 1
     if SUBCLASS_PROP_BYTES in line:
       with gzip.open(constants.WIKIDATA_SUBCLASS_EXTRACT_FILE, "at", encoding="utf-8") as subclass:
-        subclass.write(f'{line}\n')
+        subclass.write(f'{line_str}\n')
         global subclasses_written
         subclasses_written += 1
-  except json.JSONDecodeError:
-    pass
+  except orjson.JSONDecodeError:
+    print(f'Failed to decode as JSON: {line_str}')
+    with gzip.open(REJECT_FILE, "at", encoding="utf-8") as reject:
+      reject.write(f'{line_str}\n')
 
 
 def get_resume_byte():
