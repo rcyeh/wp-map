@@ -24,6 +24,7 @@ subclasses_written = 0
 
 
 def process_file(input_filename: str = INPUT_FILE):
+  start = datetime.datetime.now()
   global coords_written
   global rejects_written
   global subclasses_written
@@ -43,13 +44,19 @@ def process_file(input_filename: str = INPUT_FILE):
         extract_wikidata(decompressed_line_bytes)
         global current_bytes
         save_progress(current_bytes)
-        print(f"\rProcessed {current_bytes / (1024**3):.2f} GB of stream, wrote ({coords_written}, {rejects_written}, {subclasses_written})...",
-        end="", flush=True)
+        now = datetime.datetime.now()
+        elapsed = (now - start).seconds
+        print(f"\rProcessed {current_bytes / (1024**3):.2f} GB of stream in " +
+              f"{elapsed} s (avg {current_bytes / (1024**2) / seconds:.2f} " +
+              "MB/s), wrote (" +
+              f"{coords_written}, {rejects_written}, {subclasses_written})...",
+              end="", flush=True)
     except subprocess.CalledProcessError as e:
       print(f"\nError running lbzip2: {e.stderr}")
 
 
 def download_stream():
+  start = datetime.datetime.now()
   global coords_written
   global rejects_written
   global subclasses_written
@@ -93,7 +100,12 @@ def download_stream():
         print("Waiting 10 seconds before automated retry...")
         time.sleep(10)
         return download_stream()
-      print(f"\rProcessed {current_bytes / (1024**3):.2f} GB of stream, wrote ({coords_written}, {rejects_written}, {subclasses_written})...",
+      now = datetime.datetime.now()
+      elapsed = (now - start).seconds
+      print(f"\rProcessed {current_bytes / (1024**3):.2f} GB of stream in " +
+            f"{elapsed} s (avg {current_bytes / (1024**2) / seconds:.2f} " +
+            "MB/s), wrote (" +
+            f"{coords_written}, {rejects_written}, {subclasses_written})...",
             end="",
             flush=True
         )
@@ -222,3 +234,4 @@ if __name__ == "__main__":
       process_file(input_filename)
     case _:
       pass
+
