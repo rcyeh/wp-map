@@ -1,0 +1,182 @@
+{
+  "total_pois": 1417268,
+  "unique_direct_classes": 19205,
+  "mapped_categories_distribution": {
+    "Settlement & Populated Place": 98511,
+    "Railway Station": 41423,
+    "River / Stream / Watercourse": 34438,
+    "Building / Structure": 29723,
+    "Mountain / Hill / Relief": 28488,
+    "Church / Place of Worship": 25427,
+    "Island": 17971,
+    "Lake / Water Body": 16764,
+    "Airport / Airfield": 12607,
+    "Metro / Transit Station": 12179,
+    "Neighborhood / District": 12018,
+    "Battle": 6864,
+    "Municipality / Admin Unit": 5651,
+    "Road / Highway": 5057,
+    "Facility / Venue": 4923,
+    "Organization / Institution": 4199,
+    "Bridge": 3422,
+    "Historic Site / Monument": 2284,
+    "Library / Museum / Cultural": 1455,
+    "Historical Event / Occurrence": 1075,
+    "Architectural Structure": 402,
+    "Body of Water": 334,
+    "War / Conflict": 86
+  },
+  "top_unmapped_classes": [
+    {
+      "qid": "Q532",
+      "label": "Q532",
+      "count": 86318
+    },
+    {
+      "qid": "Q3558970",
+      "label": "Q3558970",
+      "count": 50587
+    },
+    {
+      "qid": "Q484170",
+      "label": "Q484170",
+      "count": 37408
+    },
+    {
+      "qid": "Q17343829",
+      "label": "Q17343829",
+      "count": 32854
+    },
+    {
+      "qid": "Q56436498",
+      "label": "Q56436498",
+      "count": 20990
+    },
+    {
+      "qid": "Q5084",
+      "label": "Q5084",
+      "count": 17009
+    },
+    {
+      "qid": "Q3947",
+      "label": "Q3947",
+      "count": 13979
+    },
+    {
+      "qid": "Q23397",
+      "label": "Q23397",
+      "count": 12975
+    },
+    {
+      "qid": "Q3957",
+      "label": "Q3957",
+      "count": 12743
+    },
+    {
+      "qid": "Q23442",
+      "label": "Q23442",
+      "count": 12429
+    },
+    {
+      "qid": "Q1115575",
+      "label": "Q1115575",
+      "count": 11356
+    },
+    {
+      "qid": "Q3914",
+      "label": "Q3914",
+      "count": 10899
+    },
+    {
+      "qid": "Q3257686",
+      "label": "Q3257686",
+      "count": 10469
+    },
+    {
+      "qid": "Q1529096",
+      "label": "Q1529096",
+      "count": 9896
+    },
+    {
+      "qid": "Q1093829",
+      "label": "Q1093829",
+      "count": 9347
+    },
+    {
+      "qid": "Q116457956",
+      "label": "Q116457956",
+      "count": 9120
+    },
+    {
+      "qid": "Q15243209",
+      "label": "Q15243209",
+      "count": 8567
+    },
+    {
+      "qid": "Q33506",
+      "label": "Q33506",
+      "count": 8272
+    },
+    {
+      "qid": "Q839954",
+      "label": "archaeological site",
+      "count": 8215
+    },
+    {
+      "qid": "Q17051044",
+      "label": "Q17051044",
+      "count": 8032
+    },
+    {
+      "qid": "Q747074",
+      "label": "Q747074",
+      "count": 7860
+    },
+    {
+      "qid": "Q188509",
+      "label": "Q188509",
+      "count": 7185
+    },
+    {
+      "qid": "Q3918",
+      "label": "Q3918",
+      "count": 7059
+    },
+    {
+      "qid": "Q515",
+      "label": "Q515",
+      "count": 6287
+    },
+    {
+      "qid": "Q5153359",
+      "label": "Q5153359",
+      "count": 6249
+    },
+    {
+      "qid": "Q2074737",
+      "label": "Q2074737",
+      "count": 6183
+    },
+    {
+      "qid": "Q22698",
+      "label": "Q22698",
+      "count": 5786
+    },
+    {
+      "qid": "Q3184121",
+      "label": "Q3184121",
+      "count": 5565
+    },
+    {
+      "qid": "Q159334",
+      "label": "Q159334",
+      "count": 5513
+    },
+    {
+      "qid": "Q15127012",
+      "label": "Q15127012",
+      "count": 5380
+    }
+  ],
+  "analysis_time_sec": 63.93
+}

@@ -1,0 +1,10 @@
+{
+  "input_file": "/home/r/github/wp-map/process/q_subclass.jsonl.gz",
+  "total_subclass_entries": 4425945,
+  "unique_nodes": 4425842,
+  "total_p279_edges": 5181509,
+  "total_p31_edges": 4241552,
+  "graph_file": "/home/r/github/wp-map/process/subclass_graph.jsonl.gz",
+  "graph_file_size_mb": 87.86,
+  "extraction_time_sec": 430.29
+}
