@@ -2,41 +2,59 @@ syntax = "proto3";
 
 package wpmaps;
 
+enum RejectReason {
+  REJECT_REASON_UNSPECIFIED = 0;
+  REJECT_REASON_MISSING_FIELDS = 1;     // Missing Q ID, enwiki title, or coordinates
+  REJECT_REASON_INVALID_JSON = 2;        // Line could not be parsed as JSON
+}
+
+// Category of article: what kind of geographic entity this is.
+enum ArticleType {
+  ARTICLE_TYPE_UNKNOWN              = 0;    // Not classified or abstract (no map location)
+  ARTICLE_TYPE_ADMINISTRATIVE       = 1;    // Country, province, city, village, district
+  ARTICLE_TYPE_BUILDING             = 2;    // Church, castle, school, hospital, ministry, etc.
+  ARTICLE_TYPE_CULTURAL             = 3;    // Park, garden, museum, monument, historic site
+  ARTICLE_TYPE_EVENT                = 4;    // Battlefield, disaster, festival (one-time / repeating events)
+  ARTICLE_TYPE_NATURAL              = 5;    // Mountain, river, lake, island, cliff, etc.
+  ARTICLE_TYPE_TRANSPORTATION       = 6;    // Station, airport, bridge, road, tunnel
+}
+
 message TileSet {
-  // This represents a sorted array of uint32.
-  // Each element is a delta from the previous.
-  // Each original uint32 element encodes an (x, y) tile index, with
-  // x, y up to (2**15 - 1).  These are packed as (x << 15) | y
-  repeated uint32 deltas = 1; 
+   // This represents a sorted array of uint32.
+   // Each element is a delta from the previous.
+   // Each original uint32 element encodes an (x, y) tile index, with
+   // x, y up to (2**15 - 1).  These are packed as (x << 15) | y
+  repeated uint32 deltas = 1;
 }
 
 message TileSetList {
-  // For each zoom level (indexed by zoom level, 0-15), a list of available
-  // tile indices.
+   // For each zoom level (indexed by zoom level, 0-15), a list of available
+   // tile indices.
   repeated TileSet tilesets = 1;
 }
 
 message WikiGeoData {
-  // The number following the Q in the Wikidata ID.
-  // Current max around 5e8. So we'll use all four bytes on average, saving
-  // four bytes (50%) compared to a string representation.
-  // Actually, do I need this?
+   // The number following the Q in the Wikidata ID.
+   // Current max around 5e8. So we'll use all four bytes on average, saving
+   // four bytes (50%) compared to a string representation.
+   // Actually, do I need this?
   uint32 q_id = 1;
-  // Title of page, suitable for appending to https://en.wikipedia.org/wiki/
+   // Title of page, suitable for appending to https://en.wikipedia.org/wiki/
   string name = 2;
 
-  // At the equator, a microdegree is about 4 inches; 10^-5 degrees ~ 1 m.
-  // Protobuf encodes values with 7 bits per byte, so to stay within 4 bytes,
-  // +/- 2^27 = 1.3e8. So representing +/- 180 * 1e5 stays within that range.
-  // Degrading the resolution to 10 m for an extra byte - not worth it.
+   // At the equator, a microdegree is about 4 inches; 10^-5 degrees ~ 1 m.
+   // Protobuf encodes values with 7 bits per byte, so to stay within 4 bytes,
+   // +/- 2^27 = 1.3e8. So representing +/- 180 * 1e5 stays within that range.
+   // Degrading the resolution to 10 m for an extra byte - not worth it.
 
-  // Longitude coordinate in 10^-5. East is positive, West is negative.
-  sint32 longitude = 3;  // East is positive, West is negative 10^-5 degrees.
-  // Latitude coordinate in 10^-5 degrees.  North is positive, South is negative.
-  sint32 latitude = 4;  // North is positive, South is negative 10^-5 degrees.
+   // Longitude coordinate in 10^-5. East is positive, West is negative.
+  sint32 longitude = 3;      // East is positive, West is negative 10^-5 degrees.
+   // Latitude coordinate in 10^-5 degrees.  North is positive, South is negative.
+  sint32 latitude = 4;       // North is positive, South is negative 10^-5 degrees.
 
-  uint32 logrank = 5;  // Ranks span 1-0.5E9, or 0-20 in log space.
-                       // Multiply by 750 for resolution before rounding.
+  uint32 logrank = 5;        // Ranks span 1-0.5E9, or 0-20 in log space.
+                               // Multiply by 750 for resolution before rounding.
+  repeated ArticleType article_type = 6;   // Categories of articles at this location.
 }
 
 message WikiGeoDataList {

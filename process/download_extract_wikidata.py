@@ -1,5 +1,6 @@
 import datetime
 import gzip
+
 import os
 import subprocess
 import sys
@@ -11,10 +12,71 @@ import requests
 
 import constants
 
+
+CLASS_MAPPING_FILE = "process/class_mapping.jsonl.gz"
+
+# Global mapping cache: class_id_str -> category_string
+class_category_map: dict[str, str] = {}
+category_code_map: dict[str, int] = {
+  "unknown": 0,
+  "administrative": 1,
+  "building": 2,
+  "cultural": 3,
+  "event": 4,
+  "natural": 5,
+  "transportation": 6,
+}
+
+_mapping_lock = threading.Lock()
+
+
+def load_class_mapping():
+  """Read class_mapping.jsonl.gz into memory on startup."""
+  global class_category_map
+  if not os.path.exists(CLASS_MAPPING_FILE):
+    sys.stderr.write(f"Warning: {CLASS_MAPPING_FILE} not found; no class categories available.\n")
+    return
+  with gzip.open(CLASS_MAPPING_FILE, "rt", encoding="utf-8") as f:
+    for line in f:
+      data = orjson.loads(line.strip())
+      # Data is [class_id_int, label_str, category_str]
+      cid_str = str(data[0])
+      cat = data[2]
+      class_category_map[cid_str] = cat
+  sys.stderr.write(f"Loaded {len(class_category_map)} class categories from {CLASS_MAPPING_FILE}.\n")
+
+
+def _append_new_class(cid: int, category: str):
+  """Append a new class mapping entry to the file (called only when a truly new class is seen)."""
+  label = class_category_map.get(str(cid), "")  # Unknown classes have no pre-existing label
+  record = [cid, label, category]
+  with _mapping_lock:
+    with gzip.open(CLASS_MAPPING_FILE, "at", encoding="utf-8") as f:
+      f.write(orjson.dumps(record).decode() + "\n")
+
+
+def classify_classes(class_ids):
+  """Build a list of ArticleType codes for this entity and add any unseen classes."""
+  result_codes = []
+  for cid in class_ids:
+    if not isinstance(cid, int):
+      continue
+    cid_str = str(cid)
+    if cid_str not in class_category_map:
+      # New class -- add with "unknown"
+      class_category_map[cid_str] = "unknown"
+      _append_new_class(cid, "unknown")
+      result_codes.append(0)  # ARTICLE_TYPE_UNKNOWN
+    else:
+      cat = class_category_map[cid_str]
+      result_codes.append(category_code_map.get(cat, 0))
+  return result_codes
+
+
 INPUT_FILE = "/mnt/chromeos/MyFiles/Downloads/latest-all.json.bz2"
 REJECT_FILE = "rejected_entries.jsonl.gz"
 PROGRESS_FILE = "download_progress_p.txt"
-CHUNK_SIZE = 1024 * 1024 * 16 # 16 MB
+CHUNK_SIZE = 1024 * 1024 * 16  # 16 MB
 COORD_PROP_BYTES = b'"P625"'
 SUBCLASS_PROP_BYTES = b'"P279"'
 current_bytes = 0
@@ -25,9 +87,9 @@ subclasses_written = 0
 
 def process_file(input_filename: str = INPUT_FILE):
   start = datetime.datetime.now()
-  global coords_written
-  global rejects_written
-  global subclasses_written
+  global coords_written, rejects_written, subclasses_written
+  # Load class mapping before processing begins
+  load_class_mapping()
   with open(input_filename, "rb") as bz:
     def file_chunk_generator():
       while True:
@@ -47,19 +109,19 @@ def process_file(input_filename: str = INPUT_FILE):
         now = datetime.datetime.now()
         elapsed = (now - start).seconds
         print(f"\rProcessed {current_bytes / (1024**3):.2f} GB of stream in " +
-              f"{elapsed} s (avg {current_bytes / (1024**2) / seconds:.2f} " +
-              "MB/s), wrote (" +
-              f"{coords_written}, {rejects_written}, {subclasses_written})...",
-              end="", flush=True)
+           f"{elapsed} s (avg {current_bytes / (1024**2) / seconds:.2f} " +
+           "MB/s), wrote (" +
+           f"{coords_written}, {rejects_written}, {subclasses_written})...",
+           end="", flush=True)
     except subprocess.CalledProcessError as e:
       print(f"\nError running lbzip2: {e.stderr}")
 
 
 def download_stream():
   start = datetime.datetime.now()
-  global coords_written
-  global rejects_written
-  global subclasses_written
+  global coords_written, rejects_written, subclasses_written
+  # Load class mapping before processing begins
+  load_class_mapping()
   start_byte = get_resume_byte()
   headers = {}
   if start_byte > 0:
@@ -103,12 +165,12 @@ def download_stream():
       now = datetime.datetime.now()
       elapsed = (now - start).seconds
       print(f"\rProcessed {current_bytes / (1024**3):.2f} GB of stream in " +
-            f"{elapsed} s (avg {current_bytes / (1024**2) / seconds:.2f} " +
-            "MB/s), wrote (" +
-            f"{coords_written}, {rejects_written}, {subclasses_written})...",
-            end="",
-            flush=True
-        )
+         f"{elapsed} s (avg {current_bytes / (1024**2) / seconds:.2f} " +
+         "MB/s), wrote (" +
+         f"{coords_written}, {rejects_written}, {subclasses_written})...",
+         end="",
+         flush=True
+      )
   except (requests.exceptions.RequestException, ConnectionResetError) as e:
     print(f"\n[!] Network dropped: {e}")
     print("Progress safely saved. Run the script again to resume.")
@@ -116,12 +178,11 @@ def download_stream():
     response.close()
 
 
-def stream_to_lbzip2(compressed_chunks, chunk_size=65536) -> bytes:
+def stream_to_lbzip2(compressed_chunks, chunk_size=65536):
   """
   Streams compressed bz2 chunks into lbzip2 and yields decompressed text chunks.
 
   :param compressed_chunks: An iterable (like a list or generator) of bytes.
-
   yields string
   """
   global current_bytes
@@ -146,7 +207,7 @@ def stream_to_lbzip2(compressed_chunks, chunk_size=65536) -> bytes:
           current_bytes += len(compressed_bytes_chunk)
       process.stdin.close()  # Signal EOF to lbzip2
     except BrokenPipeError:
-      # Occurs if lbzip2 exits early (e.g., due to an error)
+      # Occurs if lbzip2 exits early (e.g. due to an error)
       pass
 
   writer_thread = threading.Thread(target=writer)
@@ -183,6 +244,9 @@ def extract_wikidata(line: bytes):
 
       if q_id and enwiki and coords:
         record = {'q': q_id, 't': enwiki, 'xy': coords, 'c': classes}
+        # Classify each class ID into a code + add to record
+        codes = classify_classes(classes)
+        record['ct'] = codes
         with gzip.open(constants.WIKIDATA_COORDS_EXTRACT_FILE, "at", encoding="utf-8") as earth_coords:
           earth_coords.write(f"{orjson.dumps(record)}\n")
           global coords_written
@@ -234,4 +298,3 @@ if __name__ == "__main__":
       process_file(input_filename)
     case _:
       pass
-
