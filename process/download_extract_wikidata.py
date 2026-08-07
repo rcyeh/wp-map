@@ -80,20 +80,66 @@ def classify_classes(class_ids):
 INPUT_FILE = '/mnt/chromeos/MyFiles/Downloads/latest-all.json.bz2'
 REJECT_FILE = 'rejected_entries.jsonl.gz'
 PROGRESS_FILE = 'download_progress_p.txt'
-CHUNK_SIZE = 1024 * 1024 * 16  # 16 MB
+CHUNK_SIZE = 1024 * 1024 * 16   # 16 MB
 COORD_PROP_BYTES = b'"P625"'
 SUBCLASS_PROP_BYTES = b'"P279"'
-current_bytes = 0
-coords_written = 0
-rejects_written = 0
-subclasses_written = 0
 
+class ProcessingCounters:
+  """Thread-safe context manager for processing statistics counters."""
+
+  def __init__(self):
+    self._lock = threading.Lock()
+    self.current_bytes: int = 0
+    self.coords_written: int = 0
+    self.rejects_written: int = 0
+    self.subclasses_written: int = 0
+
+  def __enter__(self):
+    return self
+
+  def __exit__(self, *args):
+    pass
+
+  def inc_coords(self, n=1):
+    with self._lock:
+      self.coords_written += n
+
+  def inc_rejects(self, n=1):
+    with self._lock:
+      self.rejects_written += n
+
+  def inc_subclasses(self, n=1):
+    with self._lock:
+      self.subclasses_written += n
+
+  def inc_bytes(self, n: int):
+    with self._lock:
+      self.current_bytes += n
+
+  def snapshot(self) -> tuple[int, int, int, int, int]:
+    with self._lock:
+      return (
+        self.current_bytes,
+        self.coords_written,
+        self.rejects_written,
+        self.subclasses_written,
+      )
+
+  def reset(self):
+    with self._lock:
+      self.current_bytes = 0
+      self.coords_written = 0
+      self.rejects_written = 0
+      self.subclasses_written = 0
+
+
+_counters = ProcessingCounters()
 
 def process_file(input_filename: str = INPUT_FILE):
   start = datetime.datetime.now()
-  global coords_written, rejects_written, subclasses_written
   # Load class mapping before processing begins
   load_class_mapping()
+  _counters.reset()
   with open(input_filename, 'rb') as bz:
 
     def file_chunk_generator():
@@ -109,25 +155,27 @@ def process_file(input_filename: str = INPUT_FILE):
         if not decompressed_line_bytes:
           continue
         extract_wikidata(decompressed_line_bytes)
-        global current_bytes
-        save_progress(current_bytes)
+        save_progress(_counters.current_bytes)
         now = datetime.datetime.now()
         elapsed = (now - start).seconds
+        if elapsed == 0:
+          continue
+        cb, cw, rw, sw = _counters.snapshot()
         print(
-          f'\rProcessed {current_bytes / (1024**3):.2f} GB of stream in '
-          + f'{elapsed} s (avg {current_bytes / (1024**2) / elapsed:.2f} '
-          + 'MB/s), wrote ('
-          + f'{coords_written}, {rejects_written}, {subclasses_written})...',
+          f'\rProcessed {cb / (1024**3):.2f} GB of stream in '
+           + f'{elapsed} s (avg {cb / (1024**2) / elapsed:.2f} '
+           + 'MB/s), wrote ('
+           + f'{cw}, {rw}, {sw})...',
           end='',
           flush=True,
-        )
+         )
     except subprocess.CalledProcessError as e:
       print(f'\nError running lbzip2: {e.stderr}')
 
 
 def download_stream():
   start = datetime.datetime.now()
-  global coords_written, rejects_written, subclasses_written
+  _counters.current_bytes = 0
   # Load class mapping before processing begins
   load_class_mapping()
   start_byte = get_resume_byte()
@@ -149,10 +197,9 @@ def download_stream():
   except requests.exceptions.RequestException as e:
     print(f'Connection failed: {e}')
     sys.exit(1)
-  # 1. current_bytes: where we are currently reading
-  # 2. last_good_byte: the safe checkpoint before the current compression block
-  global current_bytes
-  current_bytes = start_byte
+   # 1. _counters.current_bytes: where we are currently reading
+   # 2. last_good_byte: the safe checkpoint before the current compression block
+  _counters.current_bytes = start_byte
   last_good_byte = start_byte
   try:
     for decompressed_line_bytes in stream_to_lbzip2(
@@ -162,8 +209,8 @@ def download_stream():
         continue
       try:
         extract_wikidata(decompressed_line_bytes)
-        save_progress(current_bytes)
-        last_good_byte = current_bytes
+        save_progress(_counters.current_bytes)
+        last_good_byte = _counters.current_bytes
       except (ValueError, OSError) as e:
         print(f'\n[!] Decompression error encountered: {e}')
         print(
@@ -176,13 +223,13 @@ def download_stream():
       now = datetime.datetime.now()
       elapsed = (now - start).seconds
       print(
-        f'\rProcessed {current_bytes / (1024**3):.2f} GB of stream in '
-        + f'{elapsed} s (avg {current_bytes / (1024**2) / elapsed:.2f} '
-        + 'MB/s), wrote ('
-        + f'{coords_written}, {rejects_written}, {subclasses_written})...',
+        f'\rProcessed {_counters.current_bytes / (1024**3):.2f} GB of stream in '
+         + f'{elapsed} s (avg {_counters.current_bytes / (1024**2) / elapsed:.2f} '
+         + 'MB/s), wrote ('
+         + f'{_counters.coords_written}, {_counters.rejects_written}, {_counters.subclasses_written})...',
         end='',
         flush=True,
-      )
+        )
   except (requests.exceptions.RequestException, ConnectionResetError) as e:
     print(f'\n[!] Network dropped: {e}')
     print('Progress safely saved. Run the script again to resume.')
@@ -197,8 +244,7 @@ def stream_to_lbzip2(compressed_chunks, chunk_size=65536):
   :param compressed_chunks: An iterable (like a list or generator) of bytes.
   yields string
   """
-  global current_bytes
-  current_bytes = 0
+  _counters.reset()
   # Start the lbzip2 process in decompression mode (-d)
   # -c outputs to stdout instead of a file
   process = subprocess.Popen(
@@ -211,15 +257,14 @@ def stream_to_lbzip2(compressed_chunks, chunk_size=65536):
   # Define a helper function to write data in a background thread.
   # This prevents deadlocking if lbzip2 fills the stdout buffer.
   def writer():
-    global current_bytes
     try:
       for compressed_bytes_chunk in compressed_chunks:
         if compressed_bytes_chunk:
           process.stdin.write(compressed_bytes_chunk)
-          current_bytes += len(compressed_bytes_chunk)
-      process.stdin.close()  # Signal EOF to lbzip2
+          _counters.inc_bytes(len(compressed_bytes_chunk))
+      process.stdin.close()   # Signal EOF to lbzip2
     except BrokenPipeError:
-      # Occurs if lbzip2 exits early (e.g. due to an error)
+       # Occurs if lbzip2 exits early (e.g. due to an error)
       pass
 
   writer_thread = threading.Thread(target=writer)
@@ -279,20 +324,17 @@ def extract_wikidata(line: bytes):
           constants.WIKIDATA_COORDS_EXTRACT_FILE, 'at', encoding='utf-8'
         ) as earth_coords:
           earth_coords.write(f'{orjson.dumps(record)}\n')
-          global coords_written
-          coords_written += 1
+          _counters.inc_coords()
       else:
         with gzip.open(REJECT_FILE, 'at', encoding='utf-8') as reject:
           reject.write(f'{line_str}\n')
-          global rejects_written
-          rejects_written += 1
+          _counters.inc_rejects()
     if SUBCLASS_PROP_BYTES in line:
       with gzip.open(
         constants.WIKIDATA_SUBCLASS_EXTRACT_FILE, 'at', encoding='utf-8'
       ) as subclass:
         subclass.write(f'{line_str}\n')
-        global subclasses_written
-        subclasses_written += 1
+        _counters.inc_subclasses()
   except orjson.JSONDecodeError:
     print(f'Failed to decode as JSON: {line_str}')
     with gzip.open(REJECT_FILE, 'at', encoding='utf-8') as reject:
