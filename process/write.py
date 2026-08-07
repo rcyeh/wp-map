@@ -1,18 +1,18 @@
 # python3 write.py
 
-from collections import defaultdict
 import datetime
 import gzip
 import json
 import math
 import os
+from collections import defaultdict
 
 import mercantile
 
 import constants
 import wpmaps_pb2
 
-MAXZOOM=15
+MAXZOOM = 15
 LATLON = 100000
 MAXLAT = 89.99999
 LOGRANKFACTOR = 750
@@ -32,9 +32,12 @@ def wpmap(poi: dict) -> wpmaps_pb2.WikiGeoData:
 
 
 def read_joined(filename: str = constants.JOINED_FILE) -> list[dict]:
-  with gzip.open(filename, "rt") as f:
-    allpoints = [p for p in [json.loads(line.strip()) for line in f]
-                 if all(field in p for field in REQUIRED_FIELDS)]
+  with gzip.open(filename, 'rt') as f:
+    allpoints = [
+      p
+      for p in [json.loads(line.strip()) for line in f]
+      if all(field in p for field in REQUIRED_FIELDS)
+    ]
   for p in allpoints:
     p['pbf'] = wpmap(p)
   # already sorted by popularity descending
@@ -53,10 +56,11 @@ def write_some_tiles(allpoints: list[dict], zoom: int) -> list[mercantile.Tile]:
       continue
     tileproto = wpmaps_pb2.WikiGeoDataList()
     tileproto.items.extend(pblist)
-    destination = os.path.join(constants.PATH_TO_TILE_DIR,
-      str(t.z), str(t.x), f'{t.y}.pbf')
+    destination = os.path.join(
+      constants.PATH_TO_TILE_DIR, str(t.z), str(t.x), f'{t.y}.pbf'
+    )
     os.makedirs(os.path.dirname(destination), exist_ok=True)
-    with open(destination, "wb") as f:
+    with open(destination, 'wb') as f:
       f.write(tileproto.SerializeToString())
     tiles_written.append(t)
   return tiles_written
@@ -65,7 +69,11 @@ def write_some_tiles(allpoints: list[dict], zoom: int) -> list[mercantile.Tile]:
 def loop_over_zoom(allpoints: list[dict]) -> dict[int, list]:
   tiles_written = {}
   for z in range(MAXZOOM, -1, -1):
-    print(f'{datetime.datetime.now().isoformat()} - write_some_tiles -> {z} ...', end='', flush=True)
+    print(
+      f'{datetime.datetime.now().isoformat()} - write_some_tiles -> {z} ...',
+      end='',
+      flush=True,
+    )
     tiles_written[z] = write_some_tiles(allpoints, z)
     print(f' wrote {len(tiles_written[z])} tiles')
   return tiles_written
@@ -81,14 +89,13 @@ def write_protobuf_tile_sets(tiles_written: dict[int, list]):
     tile_set.deltas.extend(delta_tidx)
     tile_set_list.tilesets.append(tile_set)
   tile_set_list_path = os.path.join(
-      constants.PATH_TO_TILE_DIR,
-      constants.TILE_SET_LIST_FILENAME
+    constants.PATH_TO_TILE_DIR, constants.TILE_SET_LIST_FILENAME
   )
-  with open(tile_set_list_path, "wb") as f:\
+  with open(tile_set_list_path, 'wb') as f:
     f.write(tile_set_list.SerializeToString())
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   print(f'{datetime.datetime.now().isoformat()} - read_joined')
   allpoints = read_joined()
 

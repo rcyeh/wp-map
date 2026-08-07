@@ -1,0 +1,35 @@
+[project]
+name = "wp-map"
+requires-python = ">=3.11"
+
+[build-system]
+requires = []
+build-backend = "none"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["process"]
+exclude = ["process/wpmaps_pb2.py"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "I",     # isort
+    "UP",    # pyupgrade
+]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["constants"]

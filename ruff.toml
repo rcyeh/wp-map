@@ -1,0 +1,43 @@
+# ruff.toml
+
+# Target python version
+target-version = "py310"
+
+# Core Google Style Rules
+line-length = 80                     # Google Style Rule: 80 character limit
+indent-width = 2                     # Google Style Rule: 4 spaces for indentation
+
+[lint]
+# Enable rules that align with Google Style
+# E/W: pycodestyle, F: Pyflakes, I: isort, N: pep8-naming, D: pydocstyle, UP: pyupgrade
+select = ["E", "W", "F", "I", "N", "D", "UP", "RUF"]
+
+# Fixable rules (automatic fixing enabled)
+fixable = ["ALL"]
+
+# Ignore rules that conflict with Google Style or are overly restrictive
+ignore = [
+    "D100",  # Missing docstring in public module
+    "D104",  # Missing docstring in public package
+    "D203",  # one-blank-line-before-class (Conflicts with D211)
+    "D213",  # multi-line-summary-second-line (Conflicts with D212)
+]
+
+[lint.pydocstyle]
+# Enforce Google-style docstring parsing
+convention = "google"
+
+[lint.isort]
+# Google Style prefers single-line imports for top-level modules
+force-single-line = true
+# Ensure standard library imports group correctly
+combine-as-imports = true
+
+[format]
+# Format settings matching Google formatting guidelines
+quote-style = "single"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+# Automatically format code blocks embedded inside docstrings
+docstring-code-format = true
