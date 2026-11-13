@@ -11,7 +11,7 @@ import requests
 
 import constants
 
-CLASS_MAPPING_FILE = 'process/class_mapping.jsonl.gz'
+CLASS_MAPPING_FILE = 'class_mapping.jsonl.gz'
 
 # Global mapping cache: class_id_str -> category_string
 class_category_map: dict[str, str] = {}
@@ -80,9 +80,10 @@ def classify_classes(class_ids):
 INPUT_FILE = '/mnt/chromeos/MyFiles/Downloads/latest-all.json.bz2'
 REJECT_FILE = 'rejected_entries.jsonl.gz'
 PROGRESS_FILE = 'download_progress_p.txt'
-CHUNK_SIZE = 1024 * 1024 * 16   # 16 MB
+CHUNK_SIZE = 1024 * 1024 * 16  # 16 MB
 COORD_PROP_BYTES = b'"P625"'
 SUBCLASS_PROP_BYTES = b'"P279"'
+
 
 class ProcessingCounters:
   """Thread-safe context manager for processing statistics counters."""
@@ -135,6 +136,7 @@ class ProcessingCounters:
 
 _counters = ProcessingCounters()
 
+
 def process_file(input_filename: str = INPUT_FILE):
   start = datetime.datetime.now()
   # Load class mapping before processing begins
@@ -151,11 +153,15 @@ def process_file(input_filename: str = INPUT_FILE):
 
     print('Decompressing stream:')
     try:
+      line_count = 0
       for decompressed_line_bytes in stream_to_lbzip2(file_chunk_generator()):
         if not decompressed_line_bytes:
           continue
         extract_wikidata(decompressed_line_bytes)
         save_progress(_counters.current_bytes)
+        line_count += 1
+        if 0 != line_count % 100000:
+          continue
         now = datetime.datetime.now()
         elapsed = (now - start).seconds
         if elapsed == 0:
@@ -163,12 +169,12 @@ def process_file(input_filename: str = INPUT_FILE):
         cb, cw, rw, sw = _counters.snapshot()
         print(
           f'\rProcessed {cb / (1024**3):.2f} GB of stream in '
-           + f'{elapsed} s (avg {cb / (1024**2) / elapsed:.2f} '
-           + 'MB/s), wrote ('
-           + f'{cw}, {rw}, {sw})...',
+          + f'{elapsed} s (avg {cb / (1024**2) / elapsed:.2f} '
+          + 'MB/s), wrote ('
+          + f'{cw} coords, {rw} rejects, {sw} subclasses)...',
           end='',
           flush=True,
-         )
+        )
     except subprocess.CalledProcessError as e:
       print(f'\nError running lbzip2: {e.stderr}')
 
@@ -196,9 +202,10 @@ def download_stream():
     response.raise_for_status()
   except requests.exceptions.RequestException as e:
     print(f'Connection failed: {e}')
+    print('Try downloading the file manually, then re-run, providing the file as the command-line argument')
     sys.exit(1)
-   # 1. _counters.current_bytes: where we are currently reading
-   # 2. last_good_byte: the safe checkpoint before the current compression block
+  # 1. _counters.current_bytes: where we are currently reading
+  # 2. last_good_byte: the safe checkpoint before the current compression block
   _counters.current_bytes = start_byte
   last_good_byte = start_byte
   try:
@@ -224,12 +231,12 @@ def download_stream():
       elapsed = (now - start).seconds
       print(
         f'\rProcessed {_counters.current_bytes / (1024**3):.2f} GB of stream in '
-         + f'{elapsed} s (avg {_counters.current_bytes / (1024**2) / elapsed:.2f} '
-         + 'MB/s), wrote ('
-         + f'{_counters.coords_written}, {_counters.rejects_written}, {_counters.subclasses_written})...',
+        + f'{elapsed} s (avg {_counters.current_bytes / (1024**2) / elapsed:.2f} '
+        + 'MB/s), wrote ('
+        + f'{_counters.coords_written}, {_counters.rejects_written}, {_counters.subclasses_written})...',
         end='',
         flush=True,
-        )
+      )
   except (requests.exceptions.RequestException, ConnectionResetError) as e:
     print(f'\n[!] Network dropped: {e}')
     print('Progress safely saved. Run the script again to resume.')
@@ -262,9 +269,9 @@ def stream_to_lbzip2(compressed_chunks, chunk_size=65536):
         if compressed_bytes_chunk:
           process.stdin.write(compressed_bytes_chunk)
           _counters.inc_bytes(len(compressed_bytes_chunk))
-      process.stdin.close()   # Signal EOF to lbzip2
+      process.stdin.close()  # Signal EOF to lbzip2
     except BrokenPipeError:
-       # Occurs if lbzip2 exits early (e.g. due to an error)
+      # Occurs if lbzip2 exits early (e.g. due to an error)
       pass
 
   writer_thread = threading.Thread(target=writer)
