@@ -2,7 +2,7 @@
 
 import datetime
 import gzip
-import json
+import orjson as json
 
 import constants
 
@@ -30,14 +30,17 @@ def read_wikidata():
   ) as f:
     for line in f:
       wde = json.loads(line.strip())
-      wpr = {
-        'q': wde['q'],
-        't': wde['t'],
-        'y': wde['latitude'],
-        'x': wde['longitude'],
-      }
-      page_wpr_map[wpr['q']] = wpr
-      records_added += 1
+      try:
+        wpr = {
+            'q': wde['q'],
+            't': wde['t'],
+            'y': wde['xy'][0]['latitude'],
+            'x': wde['xy'][0]['longitude'],
+        }
+        page_wpr_map[wpr['q']] = wpr
+        records_added += 1
+      except KeyError as e:
+        print(f'KeyError {e} in line {line}')
   print(f'Read {records_added} wikidata records')
 
 
@@ -53,6 +56,6 @@ if __name__ == '__main__':
   ]
   del page_wpr_map
   print(f'{datetime.datetime.now().isoformat()} - write joined')
-  with gzip.open(constants.JOINED_FILE, 'wt') as f:
+  with gzip.open(constants.JOINED_FILE, 'wb') as f:
     for wpr in page_wpr_list:
-      f.write(f'{json.dumps(wpr)}\n')
+      f.write(json.dumps(wpr) + b'\n')

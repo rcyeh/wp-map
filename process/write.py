@@ -2,7 +2,7 @@
 
 import datetime
 import gzip
-import json
+import orjson as json
 import math
 import os
 from collections import defaultdict
@@ -32,12 +32,17 @@ def wpmap(poi: dict) -> wpmaps_pb2.WikiGeoData:
 
 
 def read_joined(filename: str = constants.JOINED_FILE) -> list[dict]:
-  with gzip.open(filename, 'rt') as f:
-    allpoints = [
-      p
-      for p in [json.loads(line.strip()) for line in f]
-      if all(field in p for field in REQUIRED_FIELDS)
-    ]
+  allpoints = []
+  with gzip.open(filename, 'rb') as f:
+    try:
+      for line in f:
+        if line.strip():
+          record = json.loads(line)
+          if all(field in record for field in REQUIRED_FIELDS):
+            allpoints.append(record)
+    except Exception as e:
+      print(f'Parse failure {e} on line {line}')
+      return []
   for p in allpoints:
     p['pbf'] = wpmap(p)
   # already sorted by popularity descending
