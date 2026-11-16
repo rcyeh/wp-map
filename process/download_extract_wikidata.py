@@ -1,12 +1,14 @@
+from contextlib import ExitStack
 import datetime
 import gzip
+from multiprocessing import Pool, cpu_count
 import os
 import subprocess
 import sys
 import threading
 import time
 
-import orjson
+import orjson as json
 import requests
 
 import constants
@@ -38,7 +40,7 @@ def load_class_mapping():
     return
   with gzip.open(CLASS_MAPPING_FILE, 'rt', encoding='utf-8') as f:
     for line in f:
-      data = orjson.loads(line.strip())
+      data = json.loads(line.strip())
       # Data is [class_id_int, label_str, category_str]
       cid_str = str(data[0])
       cat = data[2]
@@ -56,7 +58,7 @@ def _append_new_class(cid: int, category: str):
   record = [cid, label, category]
   with _mapping_lock:
     with gzip.open(CLASS_MAPPING_FILE, 'at', encoding='utf-8') as f:
-      f.write(orjson.dumps(record).decode() + '\n')
+      f.write(json.dumps(record).decode() + '\n')
 
 
 def classify_classes(class_ids):
@@ -69,7 +71,7 @@ def classify_classes(class_ids):
     if cid_str not in class_category_map:
       # New class -- add with "unknown"
       class_category_map[cid_str] = 'unknown'
-      _append_new_class(cid, 'unknown')
+      # _append_new_class(cid, 'unknown')
       result_codes.append(0)  # ARTICLE_TYPE_UNKNOWN
     else:
       cat = class_category_map[cid_str]
@@ -139,44 +141,71 @@ _counters = ProcessingCounters()
 
 def process_file(input_filename: str = INPUT_FILE):
   start = datetime.datetime.now()
-  # Load class mapping before processing begins
-  load_class_mapping()
   _counters.reset()
+
+  lbzip2_threads = max(2, cpu_count() - 2)
   with open(input_filename, 'rb') as bz:
 
-    def file_chunk_generator():
-      while True:
-        compressed_bytes_chunk = bz.read(CHUNK_SIZE)
-        if not compressed_bytes_chunk:
-          break
-        yield compressed_bytes_chunk
+    cmd = ['lbzip2', '-d', '-c', '-n', str(lbzip2_threads)]
+    process = subprocess.Popen(
+            cmd,
+            stdin=bz,
+            stdout=subprocess.PIPE,
+            stderr=None,
+            bufsize=1024 * 1024 * 16,
+            )
+    def batch_generator(batch_bytes=1024 * 1024 * 4):
+      while batch := process.stdout.readlines(batch_bytes):
+        yield batch
 
+    workers = max(2, min(4, cpu_count() // 3))
+    open_files = {}
     print('Decompressing stream:')
     try:
       line_count = 0
-      for decompressed_line_bytes in stream_to_lbzip2(file_chunk_generator()):
-        if not decompressed_line_bytes:
-          continue
-        extract_wikidata(decompressed_line_bytes)
-        save_progress(_counters.current_bytes)
-        line_count += 1
-        if 0 != line_count % 100000:
-          continue
-        now = datetime.datetime.now()
-        elapsed = (now - start).seconds
-        if elapsed == 0:
-          continue
-        cb, cw, rw, sw = _counters.snapshot()
-        print(
-          f'\rProcessed {cb / (1024**3):.2f} GB of stream in '
-          + f'{elapsed} s (avg {cb / (1024**2) / elapsed:.2f} '
-          + 'MB/s), wrote ('
-          + f'{cw} coords, {rw} rejects, {sw} subclasses)...',
-          end='',
-          flush=True,
-        )
+      with ExitStack() as stack, Pool(processes=workers, initializer=load_class_mapping) as pool:
+        for batch_results in pool.imap_unordered(
+            extract_wikidata_batch, batch_generator(), chunksize=1):
+          for result_dict in batch_results:
+            # save_progress(_counters.current_bytes)
+            line_count += 1
+            for filepath, bytes_line in result_dict.items():
+              if filepath not in open_files:
+                open_files[filepath] = stack.enter_context(
+                    gzip.open(filepath, 'wb', compresslevel=5)
+                )
+              open_files[filepath].write(bytes_line + b'\n')
+              if filepath == constants.WIKIDATA_COORDS_EXTRACT_FILE:
+                _counters.inc_coords()
+              elif filepath == REJECT_FILE:
+                _counters.inc_rejects()
+              elif filepath == constants.WIKIDATA_SUBCLASS_EXTRACT_FILE:
+                _counters.inc_subclasses()
+            if 0 != line_count % 100000:
+              continue
+            now = datetime.datetime.now()
+            elapsed = (now - start).seconds
+            if elapsed == 0:
+              continue
+            cb = bz.tell()
+            _, cw, rw, sw = _counters.snapshot()
+            print(
+              f'\rProcessed {cb / (1024**3):.2f} GB of stream in '
+              + f'{elapsed} s (avg {cb / (1024**2) / elapsed:.2f} '
+              + 'MB/s), wrote ('
+              + f'{cw} coords, {rw} rejects, {sw} subclasses)...',
+              end='',
+              flush=True,
+            )
+      process.wait()
+      if process.returncode != 0:
+        raise subprocess.CalledProcessError(
+                process.returncode, process.args)
     except subprocess.CalledProcessError as e:
       print(f'\nError running lbzip2: {e.stderr}')
+    finally:
+      if process.poll() is None:
+        process.terminate()
 
 
 def download_stream():
@@ -244,7 +273,7 @@ def download_stream():
     response.close()
 
 
-def stream_to_lbzip2(compressed_chunks, chunk_size=65536):
+def stream_to_lbzip2(compressed_chunks, batch_bytes=1024*1024*4):
   """
   Streams compressed bz2 chunks into lbzip2 and yields decompressed text chunks.
 
@@ -258,7 +287,8 @@ def stream_to_lbzip2(compressed_chunks, chunk_size=65536):
     ['lbzip2', '-d', '-c'],
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
+    stderr=None,
+    bufsize=1024*1024*16
   )
 
   # Define a helper function to write data in a background thread.
@@ -278,7 +308,8 @@ def stream_to_lbzip2(compressed_chunks, chunk_size=65536):
   writer_thread.start()
 
   try:
-    yield from process.stdout
+    while batch := process.stdout.readlines(batch_bytes):
+      yield batch
   finally:
     writer_thread.join()
     process.wait()
@@ -289,15 +320,16 @@ def stream_to_lbzip2(compressed_chunks, chunk_size=65536):
       )
 
 
-def extract_wikidata(line: bytes):
+def extract_wikidata(line: bytes) -> dict[str, bytes]:
+  result = {}
   if COORD_PROP_BYTES not in line and SUBCLASS_PROP_BYTES not in line:
-    return
+    return result
   line = line.strip()
   if line.endswith(b','):
     line = line[:-1]
   try:
     line_str = line.decode('utf-8', errors='ignore')
-    entity = orjson.loads(line_str)
+    entity = json.loads(line_str)
     if 'claims' in entity and 'P625' in entity['claims']:
       q_id = entity['id']
       sitelinks = entity.get('sitelinks', {})
@@ -327,25 +359,20 @@ def extract_wikidata(line: bytes):
         # Classify each class ID into a code + add to record
         codes = classify_classes(classes)
         record['ct'] = codes
-        with gzip.open(
-          constants.WIKIDATA_COORDS_EXTRACT_FILE, 'at', encoding='utf-8'
-        ) as earth_coords:
-          earth_coords.write(f'{orjson.dumps(record)}\n')
-          _counters.inc_coords()
+        result[constants.WIKIDATA_COORDS_EXTRACT_FILE] = json.dumps(record)
       else:
-        with gzip.open(REJECT_FILE, 'at', encoding='utf-8') as reject:
-          reject.write(f'{line_str}\n')
-          _counters.inc_rejects()
+        result[REJECT_FILE] = line
     if SUBCLASS_PROP_BYTES in line:
-      with gzip.open(
-        constants.WIKIDATA_SUBCLASS_EXTRACT_FILE, 'at', encoding='utf-8'
-      ) as subclass:
-        subclass.write(f'{line_str}\n')
-        _counters.inc_subclasses()
-  except orjson.JSONDecodeError:
+      result[constants.WIKIDATA_SUBCLASS_EXTRACT_FILE] = line
+  except json.JSONDecodeError:
     print(f'Failed to decode as JSON: {line_str}')
-    with gzip.open(REJECT_FILE, 'at', encoding='utf-8') as reject:
-      reject.write(f'{line_str}\n')
+    result[REJECT_FILE] = line
+  return result
+
+
+def extract_wikidata_batch(lines: list[bytes]) -> list[dict]:
+  result = [res for line in lines if (res := extract_wikidata(line))]
+  return result
 
 
 def get_resume_byte():
